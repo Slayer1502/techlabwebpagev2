@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin Dashboard | TECHLAB</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body data-page="admin">
+    <div id="admin-root" class="admin-cockpit"></div>
+
+    
+    <div id="supplier-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="supplier-modal-title">Add Party</h3>
+          <button class="modal-close" onclick="closeSupplierModal()">&times;</button>
+        </div>
+        <form id="supplier-form">
+          <div class="form-group">
+            <label>Name</label>
+            <input type="text" name="name" placeholder="e.g. TechDistributors Pvt Ltd" required />
+          </div>
+          <div class="form-group">
+            <label>Party Type</label>
+            <div style="display:flex; gap:14px; flex-wrap:wrap;">
+              <label style="display:flex; align-items:center; gap:5px; font-weight:normal;">
+                <input type="radio" name="partyType" value="supplier" /> Supplier
+              </label>
+              <label style="display:flex; align-items:center; gap:5px; font-weight:normal;">
+                <input type="radio" name="partyType" value="customer" /> Customer
+              </label>
+              <label style="display:flex; align-items:center; gap:5px; font-weight:normal;">
+                <input type="radio" name="partyType" value="both" checked /> Both
+              </label>
+            </div>
+            <p style="font-size:11px; color:var(--text-soft); margin-top:4px;">"Both" = they supply you and also buy from you. GST not required.</p>
+          </div>
+          <div class="form-group">
+            <label>Contact Person</label>
+            <input type="text" name="contactPerson" placeholder="Contact person name" />
+          </div>
+          <div class="form-group">
+            <label>Mobile</label>
+            <input type="tel" name="mobile" placeholder="10-digit mobile" pattern="[0-9]{10}" />
+          </div>
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" name="email" placeholder="party@example.com" />
+          </div>
+          <div class="form-group">
+            <label>Address</label>
+            <textarea name="address" rows="2" placeholder="Party address"></textarea>
+          </div>
+          <div class="form-group">
+            <label>GST Number</label>
+            <input type="text" name="gstNumber" placeholder="e.g. 22AAAAA0000A1Z5" />
+          </div>
+          <div class="form-group">
+            <label>Notes</label>
+            <textarea name="notes" rows="2" placeholder="Any additional notes..."></textarea>
+          </div>
+          <button type="submit" class="btn" id="supplier-submit-btn">Add Party</button>
+        </form>
+      </div>
+    </div>
+
+    <div id="supplier-view-modal" class="modal">
+      <div class="modal-content" style="max-width:800px;">
+        <div class="modal-header">
+          <h3 id="supplier-view-title">Supplier Details</h3>
+          <button class="modal-close" onclick="closeSupplierViewModal()">&times;</button>
+        </div>
+        <div id="supplier-view-content"></div>
+        <div id="supplier-purchases-section" style="margin-top:20px;"></div>
+        <div class="modal-actions" style="margin-top:15px;">
+          <button type="button" class="btn" id="supplier-view-edit-btn">Edit Party</button>
+          <button type="button" class="btn btn-danger" id="supplier-view-delete-btn">Delete Party</button>
+          <button type="button" class="btn" onclick="closeSupplierViewModal()">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="po-view-modal" class="modal">
+      <div class="modal-content" style="max-width:800px;">
+        <div class="modal-header">
+          <h3 id="po-view-title">Purchase Order</h3>
+          <button class="modal-close" onclick="closePoViewModal()">&times;</button>
+        </div>
+        <div id="po-view-content"></div>
+        <div class="modal-actions" style="margin-top:15px;">
+          <button type="button" class="btn" id="po-view-receive-btn">Receive Goods</button>
+          <button type="button" class="btn btn-danger" id="po-view-delete-btn">Delete PO</button>
+          <button type="button" class="btn" onclick="closePoViewModal()">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="admin-quote-view-modal" class="modal">
+      <div class="modal-content" style="max-width:800px;">
+        <div class="modal-header">
+          <h3 id="admin-quote-view-title">Supplier Quote</h3>
+          <button class="modal-close" onclick="closeAdminQuoteViewModal()">&times;</button>
+        </div>
+        <div id="admin-quote-view-content"></div>
+        <div class="modal-actions" style="margin-top:15px;">
+          <button type="button" class="btn" id="admin-quote-view-approve-btn">Approve → Create PO</button>
+          <button type="button" class="btn btn-danger" id="admin-quote-view-reject-btn">Reject</button>
+          <button type="button" class="btn" onclick="closeAdminQuoteViewModal()">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="product-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="product-modal-title">Add Product</h3>
+          <button class="modal-close" onclick="closeProductModal()">&times;</button>
+        </div>
+        <form id="product-form">
+          <input type="hidden" name="id" />
+          <div class="form-group">
+            <label>Type</label>
+            <select name="type" required>
+              <option value="">Select Type</option>
+              <option value="Laptop">Laptop</option>
+              <option value="Desktop">Desktop</option>
+              <option value="CCTV">CCTV</option>
+              <option value="Accessory">Accessory</option>
+              <option value="Printer">Printer</option>
+              <option value="Networking">Networking</option>
+              <option value="Service">Service</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Product Name</label>
+            <input type="text" name="name" placeholder="Enter product name" required />
+          </div>
+          <div class="form-group">
+            <label>Price (Rs)</label>
+            <input type="number" name="price" placeholder="0" min="1" required />
+          </div>
+          <div class="form-group">
+            <label>Discount % (0-80)</label>
+            <input type="number" name="discountPercent" value="0" min="0" max="80" />
+          </div>
+          <div style="display:flex; gap:12px;">
+            <div class="form-group" style="flex:1;">
+              <label>HSN Code</label>
+              <input type="text" name="hsnCode" placeholder="e.g. 8471" />
+            </div>
+            <div class="form-group" style="flex:1;">
+              <label>GST Rate (%)</label>
+              <select name="gstRate">
+                <option value="0">0% (Exempted)</option>
+                <option value="5">5%</option>
+                <option value="12">12%</option>
+                <option value="18" selected>18%</option>
+                <option value="28">28%</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Description</label>
+            <textarea name="description" rows="3" placeholder="Product description"></textarea>
+          </div>
+          <button type="submit" class="btn" id="product-submit-btn">Add Product</button>
+        </form>
+      </div>
+    </div>
+
+    <div id="customer-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="customer-modal-title">Add Customer</h3>
+          <button class="modal-close">&times;</button>
+        </div>
+        <form id="customer-form">
+          <input type="hidden" name="mobile" />
+          <div class="form-group">
+            <label>Name</label>
+            <input type="text" name="name" placeholder="Customer name" required />
+          </div>
+          <div class="form-group">
+            <label>Address</label>
+            <textarea name="address" rows="2" placeholder="Address"></textarea>
+          </div>
+          <button type="submit" class="btn" id="customer-submit-btn">Save Changes</button>
+        </form>
+      </div>
+    </div>
+
+    <div id="customer-view-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Customer Details</h3>
+          <button class="modal-close">&times;</button>
+        </div>
+        <div id="customer-view-content" class="customer-view-details"></div>
+        <div class="modal-actions">
+          <button type="button" class="btn" id="customer-view-edit-btn">Edit</button>
+          <button type="button" class="btn btn-danger" id="customer-view-delete-btn">Delete</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="parties-list-modal" class="modal">
+      <div class="modal-content" style="max-width:760px; max-height:90vh; overflow-y:auto;">
+        <div class="modal-header">
+          <h3>Parties</h3>
+          <button class="modal-close" onclick="closeAdminPartiesModal()">&times;</button>
+        </div>
+        <div id="parties-list-content"></div>
+      </div>
+    </div>
+
+    <div id="due-list-modal" class="modal">
+      <div class="modal-content" style="max-width:700px; max-height:90vh; overflow-y:auto;">
+        <div class="modal-header">
+          <h3>Outstanding Dues</h3>
+          <button class="modal-close" onclick="closeAdminDueModal()">&times;</button>
+        </div>
+        <div id="due-list-content"></div>
+      </div>
+    </div>
+
+    <div id="business-settings-modal" class="modal">
+      <div class="modal-content" style="max-width:800px;">
+        <div class="modal-header">
+          <h3>Business & Banking Settings</h3>
+          <button class="modal-close" onclick="closeBusinessSettings()">&times;</button>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:32px;">
+          <div>
+            <p class="eyebrow" style="margin-bottom:12px;">Business Details</p>
+            <form id="business-settings-form" class="stack-form">
+              <label>Business Name<input type="text" name="businessName" placeholder="TECHLAB" /></label>
+              <label>GSTIN<input type="text" name="gstin" placeholder="22AAAAA0000A1Z5" /></label>
+              <label>Address<input type="text" name="businessAddress" placeholder="Casa Layout, Karur - 639001, TN" /></label>
+              <label>Phone<input type="text" name="businessPhone" placeholder="+91 94888-0-9897" /></label>
+              <label>Email<input type="email" name="businessEmail" placeholder="service@techlab.in" /></label>
+              <button type="submit" class="button button-primary" id="business-settings-save-btn">Save Business Details</button>
+              <p id="business-settings-status" class="inline-status"></p>
+            </form>
+          </div>
+
+          <div>
+            <p class="eyebrow" style="margin-bottom:12px;">Bank Accounts (for QR & Bills)</p>
+            <div id="bank-accounts-list" style="margin-bottom:16px; display:flex; flex-direction:column; gap:10px;">
+              <!-- Bank accounts will be listed here -->
+            </div>
+
+            <button class="button button-secondary button-small" onclick="toggleAddBankForm()" id="toggle-bank-form-btn">+ Add Bank Account</button>
+
+            <form id="bank-account-form" class="stack-form" style="display:none; margin-top:16px; padding:12px; background:var(--surface-soft); border-radius:12px;">
+              <label>Bank Name<input type="text" name="bankName" placeholder="e.g. HDFC Bank" required /></label>
+              <label>Account Holder<input type="text" name="accountHolder" placeholder="Business Name" required /></label>
+              <label>Account Number<input type="text" name="accountNumber" required /></label>
+              <label>IFSC Code<input type="text" name="ifsc" required /></label>
+              <label>UPI ID (for QR codes)<input type="text" name="upiId" placeholder="e.g. techlab@upi" /></label>
+              <label style="display:flex; align-items:center; gap:8px;">
+                <input type="checkbox" name="isPrimary" style="width:auto;" /> Set as primary
+              </label>
+              <label style="display:flex; align-items:center; gap:8px;">
+                <input type="checkbox" name="showQr" style="width:auto;" checked /> Print QR Code on Bills
+              </label>
+              <div style="display:flex; gap:8px; margin-top:10px;">
+                <button type="submit" class="button button-primary button-small" style="flex:1;">Save Account</button>
+                <button type="button" class="btn btn-sm" onclick="toggleAddBankForm()" style="flex:1;">Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="password-reset-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="password-reset-title">Reset Password</h3>
+          <button class="modal-close">&times;</button>
+        </div>
+        <form id="password-reset-form" class="stack-form">
+          <input type="hidden" name="staffId" />
+          <p id="password-reset-info" style="margin-bottom:12px; color:var(--muted);"></p>
+          <label>New Password<input name="newPassword" type="password" required minlength="4" placeholder="Minimum 4 characters" /></label>
+          <button type="submit" class="button button-primary">Reset Password</button>
+          <p id="password-reset-status" class="inline-status"></p>
+        </form>
+      </div>
+    </div>
+
+    <div id="day-end-modal" class="modal">
+      <div class="modal-content" style="max-width: 600px;">
+        <div class="modal-header">
+          <h3>Daily Closing Report</h3>
+          <button class="modal-close" onclick="document.getElementById('day-end-modal').classList.remove('show')">&times;</button>
+        </div>
+        <div id="day-end-content">
+          <!-- Rendered via JS -->
+        </div>
+        <div style="margin-top: 20px; text-align: right;">
+          <button class="button button-secondary" onclick="window.printDayEnd()">Print Report</button>
+          <button class="btn" onclick="document.getElementById('day-end-modal').classList.remove('show')">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="script.js"></script>
+  </body>
+</html>

@@ -1,0 +1,18 @@
+{
+  "source": {
+    "projectDir": "..\\",
+    "dbFile": "techlab_v2.sqlite",
+    "extraDirs": ["uploads", "reports"],
+    "envFile": ".env"
+  },
+  "destination": {
+    "root": "\\\\192.168.1.15\\F\\OFC FILES\\TECHLAB"
+  },
+  "retention": {
+    "dailyToKeep": 7,
+    "weeklyToKeep": 4
+  },
+  "schedule": {
+    "label": "daily-2300"
+  }
+}

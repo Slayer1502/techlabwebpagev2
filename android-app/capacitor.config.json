@@ -1,0 +1,16 @@
+{
+  "appId": "com.techlab.app",
+  "appName": "TECHLAB",
+  "webDir": "www",
+  "server": {
+    "url": "http://103.210.204.164:3000",
+    "cleartext": true
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 2000,
+      "backgroundColor": "#10284f",
+      "showSpinner": false
+    }
+  }
+}

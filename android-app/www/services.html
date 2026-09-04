@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Services | TECHLAB</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body data-page="services">
+    <header class="site-header">
+      <a class="brand" href="index.html">
+        <span class="brand-mark"></span>
+        <span class="brand-copy">
+          <strong>TECHLAB</strong>
+          <span>Sales + Service</span>
+        </span>
+      </a>
+      <nav class="site-nav" aria-label="Primary navigation">
+        <a href="products.html">Products</a>
+        <a href="services.html">Services</a>
+        <a href="login.html">Login</a>
+      </nav>
+    </header>
+
+    <main class="storefront-shell">
+      <section class="subpage-hero subpage-hero-service">
+        <div class="subpage-hero-copy">
+          <p class="eyebrow">Service Desk</p>
+          <h1>Book support in a straight line from request to technician visit.</h1>
+          <p class="storefront-lead">
+            Submit the issue first, then use customer OTP login to follow scheduling and completion
+            updates whenever you need them.
+          </p>
+          <div class="hero-actions storefront-actions">
+            <a class="button button-primary" href="login.html">Open Login</a>
+            <a class="button button-secondary" href="#service-booking">Start Booking</a>
+          </div>
+        </div>
+        <div class="subpage-metrics">
+          <div>
+            <span>Customer access</span>
+            <strong>OTP login</strong>
+          </div>
+          <div>
+            <span>Status visibility</span>
+            <strong id="service-login-state">Available</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="service-flow" id="service-booking">
+        <div class="service-guide">
+          <div class="storefront-heading">
+            <div>
+              <p class="eyebrow">Track Later</p>
+              <h2>Login is ready whenever you want to follow the request.</h2>
+            </div>
+          </div>
+          <p class="service-guide-copy">
+            Customers can log in with mobile OTP to review service history, scheduled visits, and
+            completion status after the booking is created.
+          </p>
+          <div class="service-guide-actions">
+            <a class="button button-primary" href="login.html">Customer Login</a>
+            <a class="button button-secondary" href="customer.html">Open Dashboard</a>
+          </div>
+          <p class="inline-status" id="service-login-message" aria-live="polite"></p>
+          <div class="story-grid service-mini-grid">
+            <article>
+              <span>01</span>
+              <h3>Send the issue</h3>
+              <p>Choose device type, preferred date, and the actual problem you want fixed.</p>
+            </article>
+            <article>
+              <span>02</span>
+              <h3>Staff schedules it</h3>
+              <p>The employee dashboard assigns the visit and updates the request for you.</p>
+            </article>
+          </div>
+        </div>
+
+        <aside class="service-booking-panel">
+          <div class="catalog-sidebar-copy">
+            <p class="eyebrow">Service Booking</p>
+            <h2>Describe the problem and request a visit.</h2>
+          </div>
+          <form id="service-request-form" class="stack-form">
+            <div class="field-grid">
+              <label>
+                Customer Name
+                <input name="customerName" type="text" required />
+              </label>
+              <label>
+                Mobile Number
+                <input name="mobile" type="tel" required pattern="[0-9]{10}" />
+              </label>
+            </div>
+            <div class="field-grid">
+              <label>
+                Request Type
+                <select name="deviceType" required>
+                  <option value="New Device Purchase">New Device Purchase</option>
+                  <option value="Device Service">Device Service</option>
+                  <option value="New Installation (Site Visit)">New Installation (Site Visit)</option>
+                  <option value="Installation Service">Installation Service</option>
+                </select>
+              </label>
+              <label>
+                Preferred Date
+                <input name="preferredDate" type="date" required />
+              </label>
+            </div>
+            <label>
+              Issue Description
+              <textarea name="issue" rows="4" required></textarea>
+            </label>
+            <button class="button button-primary" type="submit">Submit Service Request</button>
+            <p id="service-request-status" class="inline-status" aria-live="polite"></p>
+          </form>
+        </aside>
+      </section>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#10284f" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>TECHLAB</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: #10284f;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        flex-direction: column;
+        gap: 20px;
+      }
+      .brand {
+        font-size: 32px;
+        font-weight: 800;
+        letter-spacing: 2px;
+      }
+      .loading {
+        width: 40px;
+        height: 40px;
+        border: 3px solid rgba(255,255,255,0.3);
+        border-top-color: #1663ff;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .setup-info {
+        max-width: 300px;
+        text-align: center;
+        padding: 20px;
+        background: rgba(255,255,255,0.1);
+        border-radius: 12px;
+      }
+      .setup-info h2 { font-size: 14px; margin-bottom: 10px; color: #1663ff; }
+      .setup-info p { font-size: 12px; opacity: 0.8; line-height: 1.5; }
+      .setup-info code { background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px; }
+    </style>
+  </head>
+  <body>
+    <div class="brand">TECHLAB</div>
+    <div class="loading"></div>
+    <div class="setup-info">
+      <h2>Server Setup Required</h2>
+      <p>
+        To use this app, you need to run the TECHLAB server on your computer.
+        <br><br>
+        Start the server with: <code>npm start</code>
+        <br><br>
+        Then configure the API URL in the app settings.
+      </p>
+    </div>
+    <script type="module" src="/www/script.js"></script>
+    <script>
+      if (window.Capacitor) {
+        window.location.href = '/www/index.html';
+      } else {
+        window.location.href = '/www/index.html';
+      }
+    </script>
+  </body>
+</html>

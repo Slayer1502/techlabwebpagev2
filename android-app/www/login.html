@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Login | TECHLAB</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body data-page="login">
+    <header class="site-header">
+      <a class="brand" href="index.html">
+        <span class="brand-mark"></span>
+        <span class="brand-copy"><strong>TECHLAB</strong></span>
+      </a>
+      <nav class="site-nav">
+      </nav>
+    </header>
+    <main class="login-shell">
+      <div class="login-toggle">
+        <button type="button" class="toggle-btn active" data-login="customer" id="toggle-customer">Customer</button>
+        <button type="button" class="toggle-btn" data-login="staff" id="toggle-staff">Staff</button>
+      </div>
+
+      <section class="auth-card" id="customer-login">
+        <div class="auth-header">
+          <p class="eyebrow">Customer Access</p>
+          <h1>Login with Mobile OTP</h1>
+          <p>Enter your mobile number to receive a code.</p>
+        </div>
+        <form id="otp-request-form" class="stack-form">
+          <label>
+            Mobile Number
+            <input id="otp-mobile" name="mobile" type="tel" required pattern="[0-9]{10}" placeholder="10-digit mobile" />
+          </label>
+          <button class="button button-primary" type="submit">Send OTP</button>
+        </form>
+        <form id="otp-verify-form" class="stack-form">
+          <label>
+            Enter OTP
+            <input id="otp-code" name="otp" type="text" required placeholder="6-digit code" />
+          </label>
+          <button class="button button-primary" type="submit">Verify & Login</button>
+        </form>
+        <p id="otp-status" class="inline-status" aria-live="polite"></p>
+      </section>
+
+      <section class="auth-card hidden" id="staff-login">
+        <div class="auth-header">
+          <p class="eyebrow">💼 Employee Portal</p>
+          <h1>Staff Login</h1>
+          <p>Sign in to access sales and service tools.</p>
+        </div>
+        <form id="staff-login-form" class="stack-form">
+          <label>
+            Work Email
+            <input name="email" type="email" required id="staff-email" placeholder="you@techlab.in" autocomplete="username" />
+          </label>
+          <label>
+            Password
+            <input name="password" type="password" required id="staff-password" placeholder="••••••••" autocomplete="current-password" />
+          </label>
+          <div class="form-options">
+            <label class="checkbox-label">
+              <input type="checkbox" name="remember" /> Remember me
+            </label>
+          </div>
+          <button class="button button-primary" type="submit">Login to Dashboard</button>
+        </form>
+        <p id="staff-status" class="inline-status" aria-live="polite"></p>
+        <div class="demo-box">
+          <strong>Quick Login (Demo)</strong>
+          <div class="demo-chips">
+            <button type="button" class="demo-chip" data-user="admin@techlab.in" data-pass="admin123">Admin</button>
+            <button type="button" class="demo-chip" data-user="sales@techlab.in" data-pass="sales123">Sales</button>
+            <button type="button" class="demo-chip" data-user="tech@techlab.in" data-pass="tech123">Technician</button>
+            <button type="button" class="demo-chip" data-user="service@techlab.in" data-pass="service123">Coordinator</button>
+          </div>
+        </div>
+      </section>
+
+      <div class="login-app-download" id="login-app-download"></div>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">TECHLAB</string>
+    <string name="title_activity_main">TECHLAB</string>
+    <string name="package_name">com.techlab.app</string>
+    <string name="custom_url_scheme">com.techlab.app</string>
+</resources>

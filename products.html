@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Products | TECHLAB</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body data-page="products">
+    <header class="site-header">
+      <a class="brand" href="index.html">
+        <span class="brand-mark"></span>
+        <span class="brand-copy">
+          <strong>TECHLAB</strong>
+        </span>
+      </a>
+      <nav class="site-nav" aria-label="Primary navigation">
+        <a href="products.html" class="active">Products</a>
+        <a href="services.html">Services</a>
+        <a href="login.html">Login</a>
+        <a href="#" id="cart-icon" class="cart-link">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="9" cy="21" r="1"></circle>
+            <circle cx="20" cy="21" r="1"></circle>
+            <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+          </svg>
+          <span id="cart-count">0</span>
+        </a>
+      </nav>
+    </header>
+
+    <div id="cart-modal" class="modal" style="display:none;">
+      <div class="modal-content cart-modal-content">
+        <h2>Your Cart</h2>
+        <div class="cart-list" id="cart-list"></div>
+        <div class="cart-total">
+          <span>Total</span>
+          <strong id="cart-total">Rs. 0</strong>
+        </div>
+        <form id="checkout-form" class="stack-form">
+          <label>Buyer Name<input name="buyerName" type="text" required /></label>
+          <label>Mobile Number<input name="mobile" type="tel" required pattern="[0-9]{10}" /></label>
+          <button class="button button-primary" type="submit">Place Order</button>
+          <p id="checkout-status" class="inline-status"></p>
+        </form>
+        <button class="button button-secondary" id="close-cart">Continue Shopping</button>
+      </div>
+    </div>
+
+    <main class="storefront-shell">
+      <section class="catalog-flow">
+        <div class="catalog-products">
+          <div class="product-grid" id="product-grid"></div>
+        </div>
+      </section>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>
