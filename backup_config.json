@@ -5,9 +5,16 @@
     "extraDirs": ["uploads", "reports"],
     "envFile": ".env"
   },
-  "destination": {
-    "root": "\\\\192.168.1.15\\F\\OFC FILES\\TECHLAB"
-  },
+  "destinations": [
+    {
+      "label": "onprem-share",
+      "root": "\\\\192.168.1.15\\F\\OFC FILES\\TECHLAB"
+    },
+    {
+      "label": "google-drive",
+      "root": "H:\\My Drive\\TECHLAB"
+    }
+  ],
   "retention": {
     "dailyToKeep": 7,
     "weeklyToKeep": 4
