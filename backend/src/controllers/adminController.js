@@ -1,4 +1,5 @@
 const userService = require("../services/userService");
+const { validatePassword } = require("../utils/validators");
 const bcrypt = require("bcryptjs");
 
 const getStaff = async (req, res) => {
@@ -11,6 +12,11 @@ const createStaff = async (req, res) => {
   const { name, email, mobile, password, role } = req.body;
   if (!name || !email || !mobile || !password || !role) {
     return res.status(400).json({ error: "All fields are required" });
+  }
+
+  const passwordError = validatePassword(password);
+  if (passwordError) {
+    return res.status(400).json({ error: passwordError });
   }
 
   const existing = userService.getUserByEmail(email);
@@ -47,8 +53,9 @@ const resetStaffPassword = async (req, res) => {
   }
 
   const { password } = req.body;
-  if (!password || String(password).trim().length < 4) {
-    return res.status(400).json({ error: "Password must be at least 4 characters" });
+  const passwordError = validatePassword(password);
+  if (passwordError) {
+    return res.status(400).json({ error: passwordError });
   }
 
   const hash = bcrypt.hashSync(String(password).trim(), 10);

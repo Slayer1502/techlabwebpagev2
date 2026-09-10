@@ -2,6 +2,7 @@ const authService = require("../services/authService");
 const userService = require("../services/userService");
 const customerService = require("../services/customerService");
 const { checkRateLimit } = require("../utils/rateLimiter");
+const { setCsrfCookie, CSRF_COOKIE_NAME } = require("../middleware/csrf");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const config = require("../../config");
@@ -23,7 +24,6 @@ const requestOtp = async (req, res) => {
 
   return res.json({
     message: "OTP generated",
-    otpPreview: process.env.NODE_ENV === "production" ? undefined : otp,
   });
 };
 
@@ -41,6 +41,7 @@ const verifyOtp = async (req, res) => {
   }
 
   authService.setAuthCookie(res, result.customer);
+  setCsrfCookie(res);
   return res.json({ user: result.customer });
 };
 
@@ -57,12 +58,18 @@ const staffLogin = async (req, res) => {
   }
 
   authService.setAuthCookie(res, user);
+  setCsrfCookie(res);
   return res.json({ user: { id: user.id, role: user.role, name: user.name } });
 };
 
 const logout = async (req, res) => {
+  const refreshToken = req.cookies.techlab_refresh;
+  if (refreshToken) {
+    authService.revokeRefreshToken(refreshToken);
+  }
   res.clearCookie("techlab_token");
   res.clearCookie("techlab_refresh");
+  res.clearCookie(CSRF_COOKIE_NAME);
   res.json({ message: "Logged out" });
 };
 
@@ -73,12 +80,22 @@ const refresh = async (req, res) => {
   }
 
   try {
-    const payload = jwt.verify(token, config.JWT_SECRET);
-    const user = userService.getUserById(payload.id);
+    const payload = jwt.verify(token, config.JWT_REFRESH_SECRET);
+
+    if (authService.isRefreshTokenRevoked(token)) {
+      return res.status(401).json({ error: "Session revoked" });
+    }
+
+    const user = payload.role === "customer"
+      ? customerService.getCustomerRecordByMobile(payload.mobile)
+      : userService.getUserById(payload.id);
     if (!user) {
       return res.status(401).json({ error: "Invalid session" });
     }
+
+    authService.revokeRefreshToken(token);
     authService.setAuthCookie(res, user);
+    setCsrfCookie(res);
     return res.json({ user: { id: user.id, role: user.role, name: user.name } });
   } catch {
     return res.status(401).json({ error: "Invalid session" });
@@ -86,7 +103,9 @@ const refresh = async (req, res) => {
 };
 
 const getMe = async (req, res) => {
-    const user = userService.getUserById(req.user.id);
+    const user = req.user.role === "customer"
+      ? customerService.getCustomerRecordByMobile(req.user.mobile)
+      : userService.getUserById(req.user.id);
     if (!user) return res.status(401).json({ error: "User no longer exists" });
     return res.json({ user: { id: user.id, role: user.role, name: user.name, mobile: user.mobile } });
 };

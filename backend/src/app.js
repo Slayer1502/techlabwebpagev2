@@ -23,11 +23,19 @@ const challanRoutes = require("./routes/challanRoutes");
 const analyticsRoutes = require("./routes/analyticsRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const coreRoutes = require("./routes/coreRoutes");
+const auditRoutes = require("./routes/auditRoutes");
+const expenseRoutes = require("./routes/expenseRoutes");
+const slaRoutes = require("./routes/slaRoutes");
+const stockAlertRoutes = require("./routes/stockAlertRoutes");
+const recurringScheduleRoutes = require("./routes/recurringScheduleRoutes");
+const communicationLogRoutes = require("./routes/communicationLogRoutes");
+const splitPaymentRoutes = require("./routes/splitPaymentRoutes");
+const quotationVersionRoutes = require("./routes/quotationVersionRoutes");
+const locationRoutes = require("./routes/locationRoutes");
 
 const router = express.Router();
 
 // 1. PUBLIC ROUTES (No Auth)
-router.post("/api/auth/staff/login", authRoutes); // Test mounting directly
 router.use("/api", authRoutes);
 router.use("/api", appRoutes);
 router.use("/", coreRoutes);    // Health
@@ -52,5 +60,16 @@ router.use("/api", exportRoutes);
 router.use("/api", challanRoutes);
 router.use("/api", analyticsRoutes);
 router.use("/api", notificationRoutes);
+
+// Phase 3: New feature routes
+router.use("/api", auditRoutes);
+router.use("/api", expenseRoutes);
+router.use("/api", slaRoutes);
+router.use("/api", stockAlertRoutes);
+router.use("/api", recurringScheduleRoutes);
+router.use("/api", communicationLogRoutes);
+router.use("/api", splitPaymentRoutes);
+router.use("/api", quotationVersionRoutes);
+router.use("/api", locationRoutes);
 
 module.exports = router;

@@ -20,4 +20,13 @@ const parseServiceRequestPayload = (payload) => {
   };
 };
 
-module.exports = { parseServiceRequestPayload };
+const validatePassword = (password) => {
+  const p = String(password || "").trim();
+  if (p.length < 8) return "Password must be at least 8 characters";
+  if (!/[A-Z]/.test(p)) return "Password must contain at least one uppercase letter";
+  if (!/[a-z]/.test(p)) return "Password must contain at least one lowercase letter";
+  if (!/[0-9]/.test(p)) return "Password must contain at least one digit";
+  return null;
+};
+
+module.exports = { parseServiceRequestPayload, validatePassword };

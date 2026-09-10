@@ -1,8 +1,18 @@
 require('dotenv').config();
 
+if (!process.env.JWT_SECRET) {
+  console.error("[FATAL] JWT_SECRET environment variable is not set. Server cannot start.");
+  process.exit(1);
+}
+if (!process.env.JWT_REFRESH_SECRET) {
+  console.error("[FATAL] JWT_REFRESH_SECRET environment variable is not set. Server cannot start.");
+  process.exit(1);
+}
+
 const config = {
   PORT: process.env.PORT || 3000,
-  JWT_SECRET: process.env.JWT_SECRET || "techlab_enterprise_stable_key_2026",
+  JWT_SECRET: process.env.JWT_SECRET,
+  JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET,
   OTP_TTL_MINUTES: 5,
   RATE_LIMIT_WINDOW_MS: 60 * 1000,
   RATE_LIMIT_MAX: 10,

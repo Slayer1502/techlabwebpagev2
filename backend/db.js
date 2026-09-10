@@ -274,7 +274,12 @@ const initializeDatabase = () => {
     "billing_status TEXT DEFAULT 'pending'," +
     "linked_order_id TEXT," +
     "total_value INTEGER DEFAULT 0," +
-    "stock_deducted INTEGER DEFAULT 0" +
+    "stock_deducted INTEGER DEFAULT 0," +
+    "delivered_at TEXT," +
+    "received_by TEXT," +
+    "void_reason TEXT," +
+    "voided_by TEXT," +
+    "voided_at TEXT" +
     ");" +
 
     "CREATE TABLE IF NOT EXISTS delivery_challan_items (" +
@@ -301,7 +306,8 @@ const initializeDatabase = () => {
     "notes TEXT," +
     "created_by TEXT," +
     "created_at TEXT NOT NULL," +
-    "service_request_id TEXT" +
+    "service_request_id TEXT," +
+    "enquiry_id TEXT" +
     ");" +
 
     "CREATE TABLE IF NOT EXISTS sales_quotation_items (" +
@@ -311,8 +317,115 @@ const initializeDatabase = () => {
     "product_name TEXT NOT NULL," +
     "quantity INTEGER NOT NULL DEFAULT 1," +
     "unit_price INTEGER NOT NULL DEFAULT 0," +
+    "unit_cost INTEGER NOT NULL DEFAULT 0," +
+    "source TEXT," +
+    "supplier_id TEXT," +
+    "sq_id TEXT," +
+    "sq_number TEXT," +
     "FOREIGN KEY(quote_id) REFERENCES sales_quotations(id)," +
     "FOREIGN KEY(product_id) REFERENCES products(id)" +
+    ");" +
+
+    "CREATE TABLE IF NOT EXISTS quotation_versions (" +
+    "id TEXT PRIMARY KEY," +
+    "quote_id TEXT NOT NULL," +
+    "version_number INTEGER NOT NULL DEFAULT 1," +
+    "data_snapshot TEXT," +
+    "created_by TEXT," +
+    "created_at TEXT NOT NULL," +
+    "FOREIGN KEY(quote_id) REFERENCES sales_quotations(id)" +
+    ");" +
+
+    "CREATE TABLE IF NOT EXISTS audit_logs (" +
+    "id TEXT PRIMARY KEY," +
+    "user_id TEXT," +
+    "user_name TEXT," +
+    "user_role TEXT," +
+    "action TEXT NOT NULL," +
+    "entity_type TEXT NOT NULL," +
+    "entity_id TEXT," +
+    "old_value TEXT," +
+    "new_value TEXT," +
+    "ip_address TEXT," +
+    "created_at TEXT NOT NULL" +
+    ");" +
+
+    "CREATE TABLE IF NOT EXISTS expenses (" +
+    "id TEXT PRIMARY KEY," +
+    "category TEXT NOT NULL," +
+    "description TEXT," +
+    "amount INTEGER NOT NULL DEFAULT 0," +
+    "paid_to TEXT," +
+    "payment_mode TEXT DEFAULT 'Cash'," +
+    "receipt_url TEXT," +
+    "related_service_id TEXT," +
+    "related_order_id TEXT," +
+    "recorded_by TEXT," +
+    "recorded_by_name TEXT," +
+    "expense_date TEXT NOT NULL," +
+    "created_at TEXT NOT NULL," +
+    "FOREIGN KEY(related_service_id) REFERENCES service_requests(id)," +
+    "FOREIGN KEY(related_order_id) REFERENCES product_orders(id)" +
+    ");" +
+
+    "CREATE TABLE IF NOT EXISTS sla_definitions (" +
+    "id TEXT PRIMARY KEY," +
+    "device_type TEXT NOT NULL," +
+    "response_hours INTEGER NOT NULL DEFAULT 24," +
+    "resolution_hours INTEGER NOT NULL DEFAULT 72," +
+    "active INTEGER NOT NULL DEFAULT 1," +
+    "created_at TEXT NOT NULL" +
+    ");" +
+
+    "CREATE TABLE IF NOT EXISTS stock_alerts (" +
+    "id TEXT PRIMARY KEY," +
+    "product_id TEXT NOT NULL," +
+    "alert_type TEXT NOT NULL DEFAULT 'low_stock'," +
+    "threshold INTEGER NOT NULL DEFAULT 5," +
+    "current_stock INTEGER NOT NULL DEFAULT 0," +
+    "active INTEGER NOT NULL DEFAULT 1," +
+    "dismissed_at TEXT," +
+    "last_notified TEXT," +
+    "created_at TEXT NOT NULL," +
+    "FOREIGN KEY(product_id) REFERENCES products(id)" +
+    ");" +
+
+    "CREATE TABLE IF NOT EXISTS recurring_schedules (" +
+    "id TEXT PRIMARY KEY," +
+    "service_request_id TEXT," +
+    "customer_name TEXT," +
+    "customer_mobile TEXT," +
+    "device_type TEXT," +
+    "description TEXT," +
+    "frequency TEXT NOT NULL DEFAULT 'quarterly'," +
+    "next_due_date TEXT NOT NULL," +
+    "last_completed TEXT," +
+    "active INTEGER NOT NULL DEFAULT 1," +
+    "created_by TEXT," +
+    "created_at TEXT NOT NULL," +
+    "FOREIGN KEY(service_request_id) REFERENCES service_requests(id)" +
+    ");" +
+
+    "CREATE TABLE IF NOT EXISTS communication_log (" +
+    "id TEXT PRIMARY KEY," +
+    "entity_type TEXT NOT NULL," +
+    "entity_id TEXT NOT NULL," +
+    "channel TEXT NOT NULL DEFAULT 'note'," +
+    "direction TEXT NOT NULL DEFAULT 'outgoing'," +
+    "subject TEXT," +
+    "body TEXT," +
+    "sent_by TEXT," +
+    "sent_by_name TEXT," +
+    "created_at TEXT NOT NULL" +
+    ");" +
+
+    "CREATE TABLE IF NOT EXISTS refresh_tokens (" +
+    "id TEXT PRIMARY KEY," +
+    "user_id TEXT NOT NULL," +
+    "token_hash TEXT NOT NULL," +
+    "expires_at TEXT NOT NULL," +
+    "revoked_at TEXT," +
+    "created_at TEXT NOT NULL" +
     ");"
   );
 
@@ -370,6 +483,10 @@ const initializeDatabase = () => {
     db.exec("ALTER TABLE product_orders ADD COLUMN sgst_total INTEGER DEFAULT 0");
     db.exec("ALTER TABLE product_orders ADD COLUMN igst_total INTEGER DEFAULT 0");
     db.exec("ALTER TABLE product_orders ADD COLUMN gst_total INTEGER DEFAULT 0");
+  }
+  if (!orderColumnNames.includes("amount_paid")) {
+    db.exec("ALTER TABLE product_orders ADD COLUMN amount_paid INTEGER NOT NULL DEFAULT 0");
+    db.exec("UPDATE product_orders SET amount_paid = total_amount WHERE payment_status = 'paid'");
   }
 
   const orderItemColumns = db.prepare("PRAGMA table_info(order_items)").all();
@@ -558,6 +675,11 @@ const initializeDatabase = () => {
     db.exec("ALTER TABLE supplier_quotes ADD COLUMN pdf_path TEXT");
     db.exec("ALTER TABLE supplier_quotes ADD COLUMN pdf_name TEXT");
   }
+  const supplierQuoteColumnsNow = db.prepare("PRAGMA table_info(supplier_quotes)").all();
+  const supplierQuoteColNamesNow = supplierQuoteColumnsNow.map((column) => column.name);
+  if (!supplierQuoteColNamesNow.includes("for_enquiry_id")) {
+    db.exec("ALTER TABLE supplier_quotes ADD COLUMN for_enquiry_id TEXT");
+  }
 
   // Enquiry workflow columns
   const enquiryColumns = db.prepare("PRAGMA table_info(enquiries)").all();
@@ -580,11 +702,17 @@ const initializeDatabase = () => {
   if (!enquiryColNames.includes("po_id")) {
     db.exec("ALTER TABLE enquiries ADD COLUMN po_id TEXT");
   }
+  if (!enquiryColNames.includes("po_ids")) {
+    db.exec("ALTER TABLE enquiries ADD COLUMN po_ids TEXT");
+  }
   if (!enquiryColNames.includes("supplier_quote_id")) {
     db.exec("ALTER TABLE enquiries ADD COLUMN supplier_quote_id TEXT");
   }
   if (!enquiryColNames.includes("quote_options")) {
     db.exec("ALTER TABLE enquiries ADD COLUMN quote_options TEXT");
+  }
+  if (!enquiryColNames.includes("valid_until")) {
+    db.exec("ALTER TABLE enquiries ADD COLUMN valid_until TEXT");
   }
   if (!enquiryColNames.includes("advance_amount")) {
     db.exec("ALTER TABLE enquiries ADD COLUMN advance_amount INTEGER DEFAULT 0");
@@ -611,6 +739,52 @@ const initializeDatabase = () => {
   }
   if (!enquiryColNames.includes("lead_source")) {
     db.exec("ALTER TABLE enquiries ADD COLUMN lead_source TEXT DEFAULT 'Walk-in'");
+  }
+
+  // Phase 1: New feature columns on existing tables
+  const productColsNow = db.prepare("PRAGMA table_info(products)").all().map(c => c.name);
+  if (!productColsNow.includes("min_stock")) {
+    db.exec("ALTER TABLE products ADD COLUMN min_stock INTEGER NOT NULL DEFAULT 0");
+  }
+
+  const srColsNow = db.prepare("PRAGMA table_info(service_requests)").all().map(c => c.name);
+  if (!srColsNow.includes("sla_response_deadline")) {
+    db.exec("ALTER TABLE service_requests ADD COLUMN sla_response_deadline TEXT");
+  }
+  if (!srColsNow.includes("sla_resolution_deadline")) {
+    db.exec("ALTER TABLE service_requests ADD COLUMN sla_resolution_deadline TEXT");
+  }
+  if (!srColsNow.includes("sla_breached")) {
+    db.exec("ALTER TABLE service_requests ADD COLUMN sla_breached INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!srColsNow.includes("technician_location")) {
+    db.exec("ALTER TABLE service_requests ADD COLUMN technician_location TEXT");
+  }
+  if (!srColsNow.includes("device_intake")) {
+    db.exec("ALTER TABLE service_requests ADD COLUMN device_intake TEXT");
+  }
+
+  const sqColsNow = db.prepare("PRAGMA table_info(sales_quotations)").all().map(c => c.name);
+  if (!sqColsNow.includes("current_version")) {
+    db.exec("ALTER TABLE sales_quotations ADD COLUMN current_version INTEGER NOT NULL DEFAULT 1");
+  }
+
+  // Unified quotation engine: cost/source tracking on sales quotation items
+  const sqiColsNow = db.prepare("PRAGMA table_info(sales_quotation_items)").all().map(c => c.name);
+  if (!sqiColsNow.includes("unit_cost")) {
+    db.exec("ALTER TABLE sales_quotation_items ADD COLUMN unit_cost INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!sqiColsNow.includes("source")) {
+    db.exec("ALTER TABLE sales_quotation_items ADD COLUMN source TEXT");
+  }
+  if (!sqiColsNow.includes("supplier_id")) {
+    db.exec("ALTER TABLE sales_quotation_items ADD COLUMN supplier_id TEXT");
+  }
+  if (!sqiColsNow.includes("sq_id")) {
+    db.exec("ALTER TABLE sales_quotation_items ADD COLUMN sq_id TEXT");
+  }
+  if (!sqiColsNow.includes("sq_number")) {
+    db.exec("ALTER TABLE sales_quotation_items ADD COLUMN sq_number TEXT");
   }
 };
 
@@ -705,6 +879,30 @@ const makeId = (prefix) => {
   if (prefix === "challan") return getChallanSeq();
   if (prefix === "customer") return `C${Date.now().toString().slice(-6)}`;
   return `${prefix}-${Math.random().toString(36).slice(2, 6)}`;
+};
+
+// Indian financial year (Apr 1 - Mar 31) for a YYYY-MM-DD date, e.g. "26-27"
+const getFy = (dateStr) => {
+  const d = String(dateStr || "").slice(0, 10) || nowIso().slice(0, 10);
+  const y = parseInt(d.slice(0, 4), 10);
+  const m = parseInt(d.slice(5, 7), 10);
+  if (!y || !m) return "";
+  const startYear = m >= 4 ? y : y - 1;
+  return `${String(startYear).slice(-2)}-${String(startYear + 1).slice(-2)}`;
+};
+
+// Next INVOICE_series bill number for the FY of the given date, e.g. INV-26-27-0001
+const nextBillNumber = (dateStr) => {
+  const fy = getFy(dateStr);
+  const key = `bill_seq_${fy}`;
+  const tx = db.transaction(() => {
+    const row = db.prepare("SELECT value FROM business_settings WHERE key = ?").get(key);
+    const next = (row ? parseInt(row.value, 10) || 0 : 0) + 1;
+    db.prepare("INSERT INTO business_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+      .run(key, String(next));
+    return `INV-${fy}-${String(next).padStart(4, "0")}`;
+  });
+  return tx();
 };
 const seedDatabase = () => {
   const userCount = db.prepare("SELECT COUNT(*) as count FROM users").get().count;
@@ -1010,6 +1208,16 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_challan_items_challan ON delivery_challan_items(challan_id);
   CREATE INDEX IF NOT EXISTS idx_sales_quotes_created ON sales_quotations(created_at);
   CREATE INDEX IF NOT EXISTS idx_sales_quote_items_quote ON sales_quotation_items(quote_id);
+  CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity_type, entity_id);
+  CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs(user_id);
+  CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at);
+  CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses(category);
+  CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(expense_date);
+  CREATE INDEX IF NOT EXISTS idx_stock_alerts_product ON stock_alerts(product_id);
+  CREATE INDEX IF NOT EXISTS idx_stock_alerts_active ON stock_alerts(active);
+  CREATE INDEX IF NOT EXISTS idx_recurring_next_due ON recurring_schedules(next_due_date, active);
+  CREATE INDEX IF NOT EXISTS idx_comm_log_entity ON communication_log(entity_type, entity_id);
+  CREATE INDEX IF NOT EXISTS idx_quote_versions_quote ON quotation_versions(quote_id);
 `);
 
 try {
@@ -1017,6 +1225,69 @@ try {
 } catch (e) {
   if (!e.message.includes('duplicate column name')) throw e;
 }
+
+// Bill number display column (FY-based running series, shared across orders + service bills)
+try {
+  const poCols = db.prepare("PRAGMA table_info(product_orders)").all().map(c => c.name);
+  if (!poCols.includes("bill_number")) {
+    db.exec("ALTER TABLE product_orders ADD COLUMN bill_number TEXT");
+  }
+} catch (e) {
+  if (!e.message.includes('duplicate column name')) throw e;
+}
+
+// Assign FY-based bill numbers to existing orders + billed service requests that lack one.
+// Idempotent: only NULL rows are touched; counter per FY is max(existing INV-<fy>- numbers).
+function backfillBillNumbers() {
+  try {
+    const settings = db.prepare("SELECT key, value FROM business_settings WHERE key LIKE 'bill_seq_%'").all();
+    const counter = {};
+    for (const s of settings) counter[s.key] = Number(s.value) || 0;
+
+    const takeMax = (fy) => {
+      const key = `bill_seq_${fy}`;
+      const row = db.prepare(`
+        SELECT MAX(CAST(substr(bill_number, -4) AS INTEGER)) AS m FROM (
+          SELECT bill_number FROM product_orders WHERE bill_number LIKE ?
+          UNION ALL
+          SELECT bill_number FROM service_requests WHERE bill_number LIKE ?
+        )
+      `).get(`INV-${fy}-%`, `INV-${fy}-%`);
+      const m = Number(row && row.m || 0);
+      if (m > (counter[key] || 0)) counter[key] = m;
+    };
+
+    const upsert = db.prepare("INSERT INTO business_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value");
+    const pending = [
+      ...db.prepare("SELECT id, created_at AS d, 'order' AS kind FROM product_orders WHERE bill_number IS NULL AND status != 'Cancelled'").all(),
+      ...db.prepare("SELECT id, COALESCE(bill_date, created_at) AS d, 'service' AS kind FROM service_requests WHERE bill_number IS NULL AND bill_status = 'billed'").all(),
+      ...db.prepare("SELECT id, COALESCE(bill_date, created_at) AS d, 'service' AS kind FROM service_requests WHERE bill_number IS NOT NULL AND bill_number NOT LIKE 'INV-%' AND bill_status = 'billed'").all()
+    ];
+    pending.sort((a, b) => (a.d || "").localeCompare(b.d || "") || a.id.localeCompare(b.id));
+
+    const updOrder = db.prepare("UPDATE product_orders SET bill_number = ? WHERE id = ?");
+    const updService = db.prepare("UPDATE service_requests SET bill_number = ? WHERE id = ?");
+
+    const tx = db.transaction(() => {
+      for (const row of pending) {
+        const fy = getFy(row.d);
+        if (!fy) continue;
+        takeMax(fy);
+        const key = `bill_seq_${fy}`;
+        const seq = (counter[key] || 0) + 1;
+        counter[key] = seq;
+        upsert.run(key, String(seq));
+        const number = `INV-${fy}-${String(seq).padStart(4, "0")}`;
+        if (row.kind === "order") updOrder.run(number, row.id);
+        else updService.run(number, row.id);
+      }
+    });
+    tx();
+  } catch (e) {
+    console.error("Bill number backfill failed:", e.message);
+  }
+}
+backfillBillNumbers();
 
 // Challan migrations
 try {
@@ -1032,6 +1303,21 @@ try {
   }
   if (!challanColumns.includes("stock_deducted")) {
     db.exec("ALTER TABLE delivery_challans ADD COLUMN stock_deducted INTEGER DEFAULT 0");
+  }
+  if (!challanColumns.includes("delivered_at")) {
+    db.exec("ALTER TABLE delivery_challans ADD COLUMN delivered_at TEXT");
+  }
+  if (!challanColumns.includes("received_by")) {
+    db.exec("ALTER TABLE delivery_challans ADD COLUMN received_by TEXT");
+  }
+  if (!challanColumns.includes("void_reason")) {
+    db.exec("ALTER TABLE delivery_challans ADD COLUMN void_reason TEXT");
+  }
+  if (!challanColumns.includes("voided_by")) {
+    db.exec("ALTER TABLE delivery_challans ADD COLUMN voided_by TEXT");
+  }
+  if (!challanColumns.includes("voided_at")) {
+    db.exec("ALTER TABLE delivery_challans ADD COLUMN voided_at TEXT");
   }
 
   const challanItemColumns = db.prepare("PRAGMA table_info(delivery_challan_items)").all().map(c => c.name);
@@ -1083,7 +1369,12 @@ try {
           billing_status TEXT DEFAULT 'pending',
           linked_order_id TEXT,
           total_value INTEGER DEFAULT 0,
-          stock_deducted INTEGER DEFAULT 0
+          stock_deducted INTEGER DEFAULT 0,
+          delivered_at TEXT,
+          received_by TEXT,
+          void_reason TEXT,
+          voided_by TEXT,
+          voided_at TEXT
         )
       `);
       const dcCols = db.prepare("PRAGMA table_info(delivery_challans)").all().map(c => c.name);
@@ -1102,6 +1393,43 @@ try {
   console.error("Challan unique-index migration failed:", e.message);
 }
 
+// Repair: SQLite rewrites delivery_challan_items' FK to follow the renamed parent
+// table during the rebuild above (delivery_challans -> delivery_challans_old -> dropped),
+// leaving a dangling reference that breaks INSERTs. Re-point it when detected.
+try {
+  const fkRows = db.prepare("PRAGMA foreign_key_list(delivery_challan_items)").all();
+  const fkBroken = fkRows.some((r) => r.table !== "delivery_challans");
+  if (fkBroken) {
+    db.pragma("foreign_keys = OFF");
+    try {
+      db.exec("DROP TABLE IF EXISTS delivery_challan_items_new");
+      db.exec("DROP TABLE IF EXISTS delivery_challan_items_old");
+      db.exec(
+        "CREATE TABLE delivery_challan_items_new (" +
+        "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+        "challan_id TEXT NOT NULL," +
+        "item_name TEXT NOT NULL," +
+        "qty INTEGER NOT NULL DEFAULT 1," +
+        "unit_price INTEGER DEFAULT 0," +
+        "total_price INTEGER DEFAULT 0," +
+        "FOREIGN KEY(challan_id) REFERENCES delivery_challans(id)" +
+        ")"
+      );
+      const itemCols = db.prepare("PRAGMA table_info(delivery_challan_items)").all().map((c) => c.name).join(",");
+      db.exec(`INSERT INTO delivery_challan_items_new (${itemCols}) SELECT ${itemCols} FROM delivery_challan_items`);
+      db.exec("ALTER TABLE delivery_challan_items RENAME TO delivery_challan_items_old");
+      db.exec("ALTER TABLE delivery_challan_items_new RENAME TO delivery_challan_items");
+      db.exec("DROP TABLE IF EXISTS delivery_challan_items_old");
+      db.exec("CREATE INDEX IF NOT EXISTS idx_challan_items_challan ON delivery_challan_items(challan_id)");
+    } catch (e) {
+      console.error("Challan items FK repair failed:", e.message);
+    }
+    db.pragma("foreign_keys = ON");
+  }
+} catch (e) {
+  console.error("Challan items FK check failed:", e.message);
+}
+
 // Link sales quotations to their originating service request (e.g. survey/start-survey flow)
 try {
   const sqCols = db.prepare("PRAGMA table_info(sales_quotations)").all().map(c => c.name);
@@ -1113,9 +1441,68 @@ try {
   console.error("sales_quotations service_request_id migration failed:", e.message);
 }
 
+// Link sales quotations to the originating lead (enquiry) when a quote is prepared in the Leads module
+try {
+  const sqCols = db.prepare("PRAGMA table_info(sales_quotations)").all().map(c => c.name);
+  if (!sqCols.includes("enquiry_id")) {
+    db.exec("ALTER TABLE sales_quotations ADD COLUMN enquiry_id TEXT");
+  }
+  db.exec("CREATE INDEX IF NOT EXISTS idx_sales_quotes_enquiry ON sales_quotations(enquiry_id)");
+} catch (e) {
+  console.error("sales_quotations enquiry_id migration failed:", e.message);
+}
+
+// Service-request supplier RFQ flow:
+// - supplier_quotes: link a RFQ/quote to a service request (parts needed for a job)
+// - supplier_quote_items: capture brand/model from device intake for supplier quotation
+// - service_requests: JSON requisition state (quote_requested -> uploaded -> po_placed -> received)
+// - purchase_orders: remember backing service request so receiving stock updates the ticket
+// - supplier_quotes.po_id: PO generated on approval of the quote
+try {
+  const sqColsRfq = db.prepare("PRAGMA table_info(supplier_quotes)").all().map(c => c.name);
+  if (!sqColsRfq.includes("service_request_id")) {
+    db.exec("ALTER TABLE supplier_quotes ADD COLUMN service_request_id TEXT");
+  }
+  if (!sqColsRfq.includes("po_id")) {
+    db.exec("ALTER TABLE supplier_quotes ADD COLUMN po_id TEXT");
+  }
+  const sqiColsRfq = db.prepare("PRAGMA table_info(supplier_quote_items)").all().map(c => c.name);
+  if (!sqiColsRfq.includes("brand")) {
+    db.exec("ALTER TABLE supplier_quote_items ADD COLUMN brand TEXT");
+    db.exec("ALTER TABLE supplier_quote_items ADD COLUMN model TEXT");
+  }
+  const srRfqCols = db.prepare("PRAGMA table_info(service_requests)").all().map(c => c.name);
+  if (!srRfqCols.includes("buyout_requisition")) {
+    db.exec("ALTER TABLE service_requests ADD COLUMN buyout_requisition TEXT");
+  }
+  const poRfqCols = db.prepare("PRAGMA table_info(purchase_orders)").all().map(c => c.name);
+  if (!poRfqCols.includes("service_request_id")) {
+    db.exec("ALTER TABLE purchase_orders ADD COLUMN service_request_id TEXT");
+  }
+  db.exec("CREATE INDEX IF NOT EXISTS idx_supplier_quotes_service ON supplier_quotes(service_request_id)");
+} catch (e) {
+  console.error("Service RFQ migration failed:", e.message);
+}
+
 seedDatabase();
 seedProducts();
 migrateParties();
+
+// Seed default SLA definitions (idempotent)
+const slaCount = db.prepare("SELECT COUNT(*) as count FROM sla_definitions").get().count;
+if (slaCount === 0) {
+  const insertSla = db.prepare(
+    "INSERT INTO sla_definitions (id, device_type, response_hours, resolution_hours, active, created_at) VALUES (?, ?, ?, ?, 1, ?)"
+  );
+  const defaults = [
+    ["sla-device", "Device Service", 24, 72],
+    ["sla-install", "Installation Service", 24, 120],
+    ["sla-cctv", "CCTV", 24, 96],
+    ["sla-emergency", "Emergency", 4, 24],
+    ["sla-default", "General Support", 48, 120],
+  ];
+  for (const d of defaults) insertSla.run(...d, nowIso());
+}
 
 module.exports = {
   db,
@@ -1123,4 +1510,6 @@ module.exports = {
   nowIso,
   getCustomerByMobile,
   getQuoteSeq,
+  getFy,
+  nextBillNumber,
 };

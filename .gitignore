@@ -9,7 +9,9 @@ node_modules/
 uploads/
 reports/
 .env
-start.bat
+.env.local
+.env.*
+!.env.example
 *.log
 server_log.txt
 
@@ -20,5 +22,10 @@ scratch/
 
 # Build output
 frontend/dist/
+dist/
+
+# Backups (may contain sensitive data)
+backups/
+backup_config.json
 
 android-app/www/www/
