@@ -9,6 +9,7 @@ router.patch("/sales/enquiries/:id", authRequired(["sales", "admin"]), enquiryCo
 router.post("/sales/enquiries/:id/quote", authRequired(["sales", "admin"]), enquiryController.updateEnquiry);
 router.post("/sales/enquiries/:id/confirm", authRequired(["sales", "admin"]), enquiryController.confirmEnquiry);
 router.post("/sales/enquiries/:id/deliver", authRequired(["sales", "admin"]), enquiryController.deliverEnquiry);
+router.post("/sales/enquiries/:id/payment", authRequired(["sales", "admin"]), enquiryController.recordPayment);
 router.delete("/sales/enquiries/:id", authRequired(["sales", "admin"]), enquiryController.deleteEnquiry);
 
 module.exports = router;

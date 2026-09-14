@@ -3,6 +3,7 @@ const { formatDateValue, formatCurrencyValue, parsePagination, formatStaffRoleLa
 const { mapProductPricing } = require("../utils/productHelpers");
 const { drawPdfHeader, drawPdfFooter, drawPdfSummaryCards, drawPdfTable, PDF_COLORS } = require("../utils/pdfHelpers");
 const PDFDocument = require("pdfkit");
+const XLSX = require("exceljs");
 const fs = require("fs");
 const path = require("path");
 
@@ -17,7 +18,7 @@ const REPORT_GROUPS = [
 ];
 
 const REPORTS = [
-  { id: "sales_register", group: "sales", title: "Sales Register", desc: "All product order bills (excl. cancelled) in the period.", dated: true, adminOnly: false },
+  { id: "sales_register", group: "sales", title: "Sales Register", desc: "All product sales bills (incl. product-only service-request bills, excl. cancelled) in the period.", dated: true, adminOnly: false },
   { id: "service_billing", group: "sales", title: "Service Billing", desc: "All billed service requests in the period.", dated: true, adminOnly: false },
   { id: "gst_summary", group: "sales", title: "GST Tax Summary", desc: "Taxable value, CGST & SGST for tax-paying sales in the period.", dated: true, adminOnly: false },
   { id: "collections", group: "sales", title: "Collections", desc: "Money received (orders + services) split by Cash/UPI in the period.", dated: true, adminOnly: false },
@@ -31,10 +32,16 @@ const REPORTS = [
   { id: "low_stock", group: "inventory", title: "Low Stock Alert", desc: "Products with stock below 5 units.", dated: false, adminOnly: false },
   { id: "services", group: "operations", title: "Services Log", desc: "All service requests with status & assignment in the period.", dated: true, adminOnly: false },
   { id: "staff", group: "operations", title: "Staff Directory", desc: "Employee / sales / technician directory.", dated: false, adminOnly: true },
-  { id: "overview", group: "operations", title: "Business Overview", desc: "Snapshot of orders, services and revenue.", dated: false, adminOnly: true }
+  { id: "overview", group: "operations", title: "Business Overview", desc: "Whole-business snapshot: revenue, spend, collections, outstanding & scale.", dated: true, adminOnly: true }
 ];
 
 const resolveReportMeta = (scope) => REPORTS.find(r => r.id === scope) || null;
+
+const resolveLedgerParty = (query) => {
+  const q = String(query || "").trim();
+  if (!q) return null;
+  return db.prepare("SELECT * FROM parties WHERE id = ? OR (mobile IS NOT NULL AND mobile = ?) OR LOWER(name) = LOWER(?)").get(q, q, q);
+};
 
 const nextDay = (d) => {
   const [y, m, day] = String(d || "").split("-").map(Number);
@@ -54,7 +61,40 @@ const buildReport = (scope, opts = {}) => {
   const money = (n) => formatCurrencyValue(n);
 
   if (scope === "sales_register") {
-    let sql = "SELECT * FROM product_orders WHERE status != 'Cancelled'";
+    let sql = `
+      SELECT * FROM (
+        SELECT
+          o.id, o.bill_number, o.customer_name, o.customer_mobile, o.customer_address,
+          o.total_amount, o.status, o.created_at, o.payment_status, o.payment_mode,
+          o.taxable_amount, o.cgst_total, o.sgst_total, o.igst_total, o.gst_total, o.is_gst_bill
+        FROM product_orders o
+        WHERE o.status != 'Cancelled'
+        AND NOT EXISTS (
+          SELECT 1 FROM order_items i
+          JOIN products p ON i.product_id = p.id
+          WHERE i.order_id = o.id AND p.type = 'Service'
+        )
+
+        UNION ALL
+
+        SELECT
+          s.id, s.bill_number, s.customer_name, s.customer_mobile, '' AS customer_address,
+          s.bill_amount AS total_amount, s.status,
+          COALESCE(s.bill_date, s.created_at) AS created_at,
+          s.payment_status, s.payment_mode,
+          s.taxable_amount, s.cgst_total, s.sgst_total, 0 AS igst_total, s.gst_total,
+          CASE WHEN s.gst_total > 0 THEN 1 ELSE 0 END AS is_gst_bill
+        FROM service_requests s
+        WHERE s.bill_status = 'billed'
+        AND NOT EXISTS (
+          SELECT 1 FROM json_each(s.bill_details)
+          WHERE LOWER(json_extract(value, '$.desc')) LIKE '%service%'
+             OR LOWER(json_extract(value, '$.desc')) LIKE '%config%'
+             OR LOWER(json_extract(value, '$.desc')) LIKE '%installation%'
+        )
+      ) AS combined_bills
+      WHERE 1=1
+    `;
     const params = [];
     if (hasRange) { sql += " AND created_at >= ? AND created_at < ?"; params.push(start, endEx); }
     sql += " ORDER BY created_at DESC";
@@ -78,7 +118,7 @@ const buildReport = (scope, opts = {}) => {
         { key: "date", label: "Date" }
       ],
       tableRows: rows.map(r => ({
-        id: `#${String(r.id).slice(-6)}${r.is_gst_bill ? " (GST)" : ""}`,
+        id: `${r.bill_number || `#${String(r.id).slice(-6)}`}${r.is_gst_bill ? " (GST)" : ""}`,
         customer: r.customer_name || r.customer_mobile || "—",
         amount: money(r.total_amount),
         mode: r.payment_mode || "—",
@@ -89,11 +129,28 @@ const buildReport = (scope, opts = {}) => {
   }
 
   if (scope === "service_billing") {
-    let sql = `SELECT * FROM service_requests WHERE bill_status = 'billed'`;
+    let sql = `
+      SELECT id, customer_name, customer_mobile, device_type, bill_amount, amount_paid, payment_status, bill_number, bill_date, created_at, 'service_request' as src FROM service_requests WHERE bill_status = 'billed'
+      AND EXISTS (
+        SELECT 1 FROM json_each(bill_details)
+        WHERE LOWER(json_extract(value, '$.desc')) LIKE '%service%'
+           OR LOWER(json_extract(value, '$.desc')) LIKE '%config%'
+           OR LOWER(json_extract(value, '$.desc')) LIKE '%installation%'
+      )
+      UNION ALL
+      SELECT o.id, o.customer_name, o.customer_mobile, 'POS Service' as device_type, o.total_amount as bill_amount, (SELECT COALESCE(SUM(amount), 0) FROM order_payments WHERE order_id = o.id) as amount_paid, o.payment_status, COALESCE(o.bill_number, o.id) as bill_number, o.created_at as bill_date, o.created_at as created_at, 'product_order' as src FROM product_orders o
+      WHERE o.status != 'Cancelled'
+      AND EXISTS (
+        SELECT 1 FROM order_items i
+        JOIN products p ON i.product_id = p.id
+        WHERE i.order_id = o.id AND p.type = 'Service'
+      )
+    `;
     const params = [];
-    if (hasRange) { sql += ` AND COALESCE(bill_date, created_at) >= ? AND COALESCE(bill_date, created_at) < ?`; params.push(start, endEx); }
-    sql += " ORDER BY COALESCE(bill_date, created_at) DESC";
-    const rows = db.prepare(sql).all(...params);
+    let finalSql = `SELECT * FROM (${sql}) AS combined_bills WHERE 1=1`;
+    if (hasRange) { finalSql += ` AND COALESCE(bill_date, created_at) >= ? AND COALESCE(bill_date, created_at) < ?`; params.push(start, endEx); }
+    finalSql += " ORDER BY COALESCE(bill_date, created_at) DESC";
+    const rows = db.prepare(finalSql).all(...params);
     const total = rows.reduce((s, r) => s + (r.bill_amount || 0), 0);
     return {
       filenameBase: `service-billing-${start}-to-${end}`,
@@ -223,7 +280,11 @@ const buildReport = (scope, opts = {}) => {
     sql += " ORDER BY p.purchase_date DESC, p.created_at DESC";
     const rows = db.prepare(sql).all(...params);
     const total = rows.reduce((s, p) => s + (p.total_cost || 0), 0);
+    const gross = rows.reduce((s, p) => s + (p.total_cost || 0) + (p.cgst_total || 0) + (p.sgst_total || 0), 0);
     const paid = rows.reduce((s, p) => s + (p.amount_paid || 0), 0);
+    const unpaidBalance = rows
+      .filter(p => p.payment_status !== 'paid')
+      .reduce((s, p) => s + (p.total_cost || 0) + (p.cgst_total || 0) + (p.sgst_total || 0) - (p.amount_paid || 0), 0);
     const cg = rows.reduce((s, p) => s + (p.cgst_total || 0), 0);
     const sg = rows.reduce((s, p) => s + (p.sgst_total || 0), 0);
     return {
@@ -232,9 +293,9 @@ const buildReport = (scope, opts = {}) => {
       summaryItems: [
         { label: "Period", value: label },
         { label: "Purchases", value: String(rows.length) },
-        { label: "Purchase Value", value: money(total) },
+        { label: "Purchase Value (excl. GST)", value: money(total) },
         { label: "Amount Paid", value: money(paid) },
-        { label: "Balance Due", value: money(total - paid) },
+        { label: "Balance Due", value: money(unpaidBalance) },
         { label: "Total GST", value: money(cg + sg) }
       ],
       tableHeaders: [
@@ -370,43 +431,195 @@ const buildReport = (scope, opts = {}) => {
   }
 
   if (scope === "overview") {
-    const orders = db.prepare("SELECT id, customer_name, total_amount, status, created_at FROM product_orders ORDER BY created_at DESC").all();
-    const requests = db.prepare("SELECT customer_name, device_type, status, scheduled_date, assigned_employee_name FROM service_requests ORDER BY created_at DESC").all();
-    const revenue = orders.reduce((s, o) => s + (o.total_amount || 0), 0);
+    // ---- REVENUE (respects selected period) ----
+    const salesSql = hasRange
+      ? "SELECT id, customer_name, total_amount, created_at FROM product_orders WHERE status != 'Cancelled' AND created_at >= ? AND created_at < ?"
+      : "SELECT id, customer_name, total_amount, created_at FROM product_orders WHERE status != 'Cancelled'";
+    const orders = hasRange ? db.prepare(salesSql).all(start, endEx) : db.prepare(salesSql).all();
+    const salesTotal = orders.reduce((s, r) => s + (r.total_amount || 0), 0);
+
+    const servSql = hasRange
+      ? "SELECT id, customer_name, bill_amount, COALESCE(bill_date, created_at) AS bill_date, device_type FROM service_requests WHERE bill_status = 'billed' AND COALESCE(bill_date, created_at) >= ? AND COALESCE(bill_date, created_at) < ?"
+      : "SELECT id, customer_name, bill_amount, COALESCE(bill_date, created_at) AS bill_date, device_type FROM service_requests WHERE bill_status = 'billed'";
+    const services = hasRange ? db.prepare(servSql).all(start, endEx) : db.prepare(servSql).all();
+    const servicesTotal = services.reduce((s, r) => s + (r.bill_amount || 0), 0);
+    const totalIncome = salesTotal + servicesTotal;
+
+    // ---- SPEND (respects selected period) ----
+    const purSql = hasRange
+      ? "SELECT id, product_name, total_cost, purchase_date FROM purchases WHERE purchase_date >= ? AND purchase_date < ?"
+      : "SELECT id, product_name, total_cost, purchase_date FROM purchases";
+    const purchases = hasRange ? db.prepare(purSql).all(start, endEx) : db.prepare(purSql).all();
+    const purchasesTotal = purchases.reduce((s, r) => s + (r.total_cost || 0), 0);
+
+    const convSql = hasRange
+      ? "SELECT customer_name, conveyance_expense, completed_at FROM service_requests WHERE status = 'Completed' AND conveyance_expense > 0 AND completed_at >= ? AND completed_at < ?"
+      : "SELECT customer_name, conveyance_expense, completed_at FROM service_requests WHERE status = 'Completed' AND conveyance_expense > 0";
+    const conveyanceItems = hasRange ? db.prepare(convSql).all(start, endEx) : db.prepare(convSql).all();
+    const conveyanceTotal = conveyanceItems.reduce((s, r) => s + (r.conveyance_expense || 0), 0);
+
+    const expSql = hasRange
+      ? "SELECT category, description, amount, expense_date FROM expenses WHERE expense_date >= ? AND expense_date < ?"
+      : "SELECT category, description, amount, expense_date FROM expenses";
+    const expenses = hasRange ? db.prepare(expSql).all(start, endEx) : db.prepare(expSql).all();
+    const expensesTotal = expenses.reduce((s, r) => s + (r.amount || 0), 0);
+    const totalSpend = purchasesTotal + conveyanceTotal + expensesTotal;
+    const netResult = totalIncome - totalSpend;
+
+    const expenseByCat = {};
+    expenses.forEach(e => {
+      const key = e.category || "Other";
+      expenseByCat[key] = (expenseByCat[key] || 0) + (e.amount || 0);
+    });
+    const topExpenseCategories = Object.entries(expenseByCat)
+      .map(([category, amount]) => ({ category, amount }))
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 6);
+
+    // ---- COLLECTIONS (respects selected period) ----
+    const collSql = "SELECT COALESCE(SUM(amount),0) AS t FROM (" +
+      "SELECT amount, paid_at FROM order_payments UNION ALL SELECT amount, paid_at FROM service_payments" +
+      ") WHERE " + (hasRange ? "paid_at >= ? AND paid_at < ?" : "1=1");
+    const collectedTotal = db.prepare(collSql).get(...(hasRange ? [start, endEx] : [])).t || 0;
+
+    // ---- LIVE / ALL-TIME FIGURES ----
+    const live = db.prepare(`
+      SELECT
+        (SELECT COALESCE(SUM(bill_amount - COALESCE(amount_paid,0) - COALESCE(discount_amount,0)),0) FROM service_requests WHERE bill_status = 'billed' AND payment_status != 'paid')
+        + (SELECT COALESCE(SUM(total_amount),0) FROM product_orders WHERE payment_status != 'paid' AND status != 'Cancelled') AS customer_due,
+        (SELECT COALESCE(SUM(COALESCE(total_cost,0) + COALESCE(cgst_total,0) + COALESCE(sgst_total,0) - COALESCE(amount_paid,0)),0) FROM purchases WHERE payment_status != 'paid')
+        + (SELECT COALESCE(SUM(total_amount),0) FROM purchase_orders WHERE status NOT IN ('received','cancelled')) AS supplier_due
+    `).get();
+    const customerDue = live.customer_due || 0;
+    const supplierDue = live.supplier_due || 0;
+
+    const scale = db.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM products WHERE active = 1) AS products,
+        (SELECT COUNT(*) FROM users WHERE role IN ('employee','sales','technician')) AS staff,
+        (SELECT COUNT(*) FROM product_orders WHERE status != 'Cancelled') AS orders,
+        (SELECT COUNT(*) FROM service_requests) AS requests,
+        (SELECT COUNT(*) FROM service_requests WHERE status NOT IN ('Completed','Canceled','Cancelled')) AS open_requests,
+        (SELECT COUNT(*) FROM service_requests WHERE status = 'Completed') AS completed
+    `).get();
+
+    const recentOrders = orders.slice(0, 12).map(o => ({
+      date: o.created_at,
+      ref: "Order",
+      party: o.customer_name,
+      type: "Product Sale",
+      amount: o.total_amount
+    }));
+    const recentServices = services.slice(0, 12).map(s => ({
+      date: s.bill_date,
+      ref: "Service",
+      party: s.customer_name,
+      type: s.device_type || "Service",
+      amount: s.bill_amount
+    }));
+
     return {
       filenameBase: "business-overview",
       title: "Business Overview",
       summaryItems: [
-        { label: "Total Orders", value: String(orders.length) },
-        { label: "Sales Revenue", value: money(revenue) },
-        { label: "Service Requests", value: String(requests.length) },
-        { label: "Completed Jobs", value: String(requests.filter(r => r.status === "Completed").length) }
+        { label: "Period", value: label },
+        { label: "Sales Revenue", value: money(totalIncome) },
+        { label: "Net Result", value: money(netResult) },
+        { label: "Collections", value: money(collectedTotal) },
+        { label: "Customer Outstanding", value: money(customerDue) },
+        { label: "Supplier Due", value: money(supplierDue) }
       ],
-      tableHeaders: [
-        { key: "id", label: "Order ID" },
-        { key: "customer", label: "Customer" },
-        { key: "amount", label: "Amount" },
-        { key: "status", label: "Status" },
-        { key: "date", label: "Date" }
+      sections: [
+        {
+          title: "Revenue Breakdown",
+          headers: [
+            { key: "source", label: "Income Source" },
+            { key: "count", label: "Count" },
+            { key: "amount", label: "Amount" }
+          ],
+          rows: [
+            { source: "Product Sales", count: String(orders.length), amount: money(salesTotal) },
+            { source: "Service Billing", count: String(services.length), amount: money(servicesTotal) }
+          ]
+        },
+        {
+          title: "Spend Breakdown",
+          headers: [
+            { key: "source", label: "Spend Category" },
+            { key: "count", label: "Count" },
+            { key: "amount", label: "Amount" }
+          ],
+          rows: [
+            { source: "Inventory Procurement", count: String(purchases.length), amount: money(purchasesTotal) },
+            { source: "Technician Conveyance", count: String(conveyanceItems.length), amount: money(conveyanceTotal) },
+            { source: "Operating Expenses", count: String(expenses.length), amount: money(expensesTotal) }
+          ]
+        },
+        {
+          title: "Top Operating Expenses",
+          headers: [
+            { key: "category", label: "Category" },
+            { key: "amount", label: "Amount" }
+          ],
+          rows: topExpenseCategories.length
+            ? topExpenseCategories.map(c => ({ category: c.category, amount: money(c.amount) }))
+            : [{ category: "No expenses in period", amount: "—" }]
+        },
+        {
+          title: "Live Outstanding",
+          headers: [
+            { key: "item", label: "Item" },
+            { key: "amount", label: "Amount" }
+          ],
+          rows: [
+            { item: "Customer Receivables", amount: money(customerDue) },
+            { item: "Supplier Dues", amount: money(supplierDue) },
+            { item: "Net Receivable", amount: money(customerDue - supplierDue) }
+          ]
+        },
+        {
+          title: "Business Scale (All-time)",
+          headers: [
+            { key: "metric", label: "Metric" },
+            { key: "value", label: "Value" }
+          ],
+          rows: [
+            { metric: "Products in Catalog", value: String(scale.products) },
+            { metric: "Active Staff", value: String(scale.staff) },
+            { metric: "Orders Placed", value: String(scale.orders) },
+            { metric: "Service Requests", value: String(scale.requests) },
+            { metric: "Open Service Requests", value: String(scale.open_requests) },
+            { metric: "Completed Jobs", value: String(scale.completed) }
+          ]
+        },
+        {
+          title: "Recent Activity",
+          headers: [
+            { key: "date", label: "Date" },
+            { key: "ref", label: "Type" },
+            { key: "party", label: "Customer" },
+            { key: "type", label: "Line" },
+            { key: "amount", label: "Amount" }
+          ],
+          rows: [...recentOrders, ...recentServices]
+            .sort((a, b) => new Date(b.date) - new Date(a.date))
+            .slice(0, 20)
+            .map(r => ({ ...r, date: formatDateValue(r.date), amount: money(r.amount) }))
+        }
       ],
-      tableRows: orders.slice(0, 20).map(o => ({
-        id: `#${String(o.id).slice(-6)}`,
-        customer: o.customer_name,
-        amount: money(o.total_amount),
-        status: o.status,
-        date: formatDateValue(o.created_at)
-      }))
+      tableHeaders: null,
+      tableRows: []
     };
   }
 
   if (scope === "supplier_dues") {
     const rows = db.prepare(`
       SELECT pt.name AS supplier_name,
-        (SELECT COALESCE(SUM(COALESCE(p.total_cost,0) - COALESCE(p.amount_paid,0)),0) FROM purchases p WHERE p.supplier_id = pt.id AND p.payment_status != 'paid')
+        (SELECT COALESCE(SUM(COALESCE(p.total_cost,0) + COALESCE(p.cgst_total,0) + COALESCE(p.sgst_total,0) - COALESCE(p.amount_paid,0)),0) FROM purchases p WHERE p.supplier_id = pt.id AND p.payment_status != 'paid')
         + (SELECT COALESCE(SUM(po.total_amount),0) FROM purchase_orders po WHERE po.supplier_id = pt.id AND po.status NOT IN ('received','cancelled')) AS due
       FROM parties pt
       WHERE pt.is_supplier = 1
-        AND ((SELECT COALESCE(SUM(COALESCE(p.total_cost,0) - COALESCE(p.amount_paid,0)),0) FROM purchases p WHERE p.supplier_id = pt.id AND p.payment_status != 'paid')
+        AND ((SELECT COALESCE(SUM(COALESCE(p.total_cost,0) + COALESCE(p.cgst_total,0) + COALESCE(p.sgst_total,0) - COALESCE(p.amount_paid,0)),0) FROM purchases p WHERE p.supplier_id = pt.id AND p.payment_status != 'paid')
             + (SELECT COALESCE(SUM(po.total_amount),0) FROM purchase_orders po WHERE po.supplier_id = pt.id AND po.status NOT IN ('received','cancelled'))) > 0
       ORDER BY due DESC
     `).all();
@@ -433,15 +646,15 @@ const buildReport = (scope, opts = {}) => {
       FROM service_requests WHERE bill_status = 'billed' AND payment_status != 'paid'
     `).all();
     const unpaidOrders = db.prepare(`
-      SELECT customer_name, customer_mobile, id AS bill_number, total_amount AS due, created_at AS bill_date, 'Order' AS source
+      SELECT customer_name, customer_mobile, COALESCE(bill_number, id) AS bill_number, total_amount AS due, created_at AS bill_date, 'Order' AS source
       FROM product_orders WHERE payment_status != 'paid' AND status != 'Cancelled'
     `).all();
     const supplierRows = db.prepare(`
       SELECT pt.name AS supplier_name,
-        (SELECT COALESCE(SUM(COALESCE(p.total_cost,0) - COALESCE(p.amount_paid,0)),0) FROM purchases p WHERE p.supplier_id = pt.id AND p.payment_status != 'paid')
+        (SELECT COALESCE(SUM(COALESCE(p.total_cost,0) + COALESCE(p.cgst_total,0) + COALESCE(p.sgst_total,0) - COALESCE(p.amount_paid,0)),0) FROM purchases p WHERE p.supplier_id = pt.id AND p.payment_status != 'paid')
         + (SELECT COALESCE(SUM(po.total_amount),0) FROM purchase_orders po WHERE po.supplier_id = pt.id AND po.status NOT IN ('received','cancelled')) AS due
       FROM parties pt WHERE pt.is_supplier = 1
-        AND ((SELECT COALESCE(SUM(COALESCE(p.total_cost,0) - COALESCE(p.amount_paid,0)),0) FROM purchases p WHERE p.supplier_id = pt.id AND p.payment_status != 'paid')
+        AND ((SELECT COALESCE(SUM(COALESCE(p.total_cost,0) + COALESCE(p.cgst_total,0) + COALESCE(p.sgst_total,0) - COALESCE(p.amount_paid,0)),0) FROM purchases p WHERE p.supplier_id = pt.id AND p.payment_status != 'paid')
             + (SELECT COALESCE(SUM(po.total_amount),0) FROM purchase_orders po WHERE po.supplier_id = pt.id AND po.status NOT IN ('received','cancelled'))) > 0
     `).all();
     const custRows = [...unpaidServices, ...unpaidOrders].map(r => ({
@@ -601,6 +814,118 @@ const buildReport = (scope, opts = {}) => {
     };
   }
 
+  if (scope === "customer_ledger") {
+    const party = resolveLedgerParty(opts.party);
+    if (!party) return { error: "party_required" };
+
+    const entries = [];
+    let billed = 0;
+    let paid = 0;
+
+    if (party.is_customer === 1) {
+      const orders = db.prepare(`
+        SELECT id, bill_number, total_amount, created_at FROM product_orders
+        WHERE status != 'Cancelled' AND (customer_mobile = ? OR (? IS NULL AND LOWER(customer_name) = LOWER(?)))
+      `).all(party.mobile, party.mobile, party.name);
+      billed += orders.reduce((s, o) => s + (o.total_amount || 0), 0);
+      orders.forEach(o => entries.push({
+        date: o.created_at,
+        particulars: "Product Sale",
+        ref: o.bill_number || `#${String(o.id).slice(-6)}`,
+        debit: o.total_amount || 0,
+        credit: 0
+      }));
+
+      const services = db.prepare(`
+        SELECT id, bill_number, bill_amount, COALESCE(discount_amount,0) AS discount, amount_paid, COALESCE(bill_date, created_at) AS date
+        FROM service_requests WHERE bill_status = 'billed' AND (customer_mobile = ? OR (? IS NULL AND LOWER(customer_name) = LOWER(?)))
+      `).all(party.mobile, party.mobile, party.name);
+      billed += services.reduce((s, sv) => s + (sv.bill_amount || 0) - (sv.discount || 0), 0);
+      services.forEach(sv => {
+        const svRef = sv.bill_number || `#${String(sv.id).slice(-6)}`;
+        entries.push({ date: sv.date, particulars: "Service Billing", ref: svRef, debit: sv.bill_amount || 0, credit: 0 });
+        if (sv.discount > 0) entries.push({ date: sv.date, particulars: "Discount", ref: svRef, debit: 0, credit: sv.discount });
+      });
+
+      const payments = db.prepare(`
+        SELECT pm.amount, pm.payment_mode, pm.paid_at AS date, 'Order' AS src FROM order_payments pm
+        JOIN product_orders o ON pm.order_id = o.id
+        WHERE o.customer_mobile = ? OR (? IS NULL AND LOWER(o.customer_name) = LOWER(?))
+        UNION ALL
+        SELECT pm.amount, pm.payment_mode, pm.paid_at AS date, 'Service' AS src FROM service_payments pm
+        JOIN service_requests s ON pm.service_request_id = s.id
+        WHERE s.customer_mobile = ? OR (? IS NULL AND LOWER(s.customer_name) = LOWER(?))
+        ORDER BY date
+      `).all(party.mobile, party.mobile, party.name, party.mobile, party.mobile, party.name);
+      paid += payments.reduce((s, p) => s + (p.amount || 0), 0);
+      payments.forEach(p => entries.push({
+        date: p.date,
+        particulars: `Payment (${p.payment_mode || "N/A"})`,
+        ref: p.src,
+        debit: 0,
+        credit: p.amount || 0
+      }));
+    }
+
+    if (party.is_supplier === 1) {
+      const purchases = db.prepare(`
+        SELECT id, (COALESCE(total_cost,0) + COALESCE(cgst_total,0) + COALESCE(sgst_total,0)) AS amount, COALESCE(amount_paid,0) AS paid, purchase_date AS date, invoice_number
+        FROM purchases WHERE supplier_id = ?
+      `).all(party.id);
+      billed += purchases.reduce((s, pu) => s + (pu.amount || 0), 0);
+      paid += purchases.reduce((s, pu) => s + (pu.paid || 0), 0);
+      purchases.forEach(pu => {
+        const ref = pu.invoice_number || `#${String(pu.id).slice(-6)}`;
+        entries.push({ date: pu.date, particulars: "Purchase", ref, debit: 0, credit: pu.amount || 0 });
+        if (pu.paid > 0) entries.push({ date: pu.date, particulars: "Payment Made", ref, debit: pu.paid, credit: 0 });
+      });
+
+      const pos = db.prepare(`
+        SELECT po_number, total_amount, po_date, status FROM purchase_orders WHERE supplier_id = ? AND status NOT IN ('received','cancelled')
+      `).all(party.id);
+      billed += pos.reduce((s, po) => s + (po.total_amount || 0), 0);
+      pos.forEach(po => entries.push({
+        date: po.po_date || "",
+        particulars: `PO Committed (${po.status})`,
+        ref: po.po_number || "—",
+        debit: 0,
+        credit: po.total_amount || 0
+      }));
+    }
+
+    entries.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    let running = 0;
+    const withBalance = entries.map(e => {
+      running += (e.debit || 0) - (e.credit || 0);
+      return { ...e, debit: money(e.debit), credit: money(e.credit), balance: money(running) };
+    });
+
+    const typeLabel = party.is_customer === 1 && party.is_supplier === 1 ? "Customer & Supplier"
+      : party.is_supplier === 1 ? "Supplier" : "Customer";
+
+    return {
+      filenameBase: `party-ledger-${party.id}`,
+      title: `Party Ledger — ${party.name}`,
+      summaryItems: [
+        { label: "Party", value: party.name },
+        { label: "Type", value: typeLabel },
+        { label: "Billed / Charged", value: money(billed) },
+        { label: "Paid / Received", value: money(paid) },
+        { label: "Closing Balance", value: money(billed - paid) }
+      ],
+      tableHeaders: [
+        { key: "date", label: "Date" },
+        { key: "particulars", label: "Particulars" },
+        { key: "ref", label: "Reference" },
+        { key: "debit", label: "Debit" },
+        { key: "credit", label: "Credit" },
+        { key: "balance", label: "Balance" }
+      ],
+      tableRows: withBalance,
+      sections: null
+    };
+  }
+
   return null;
 };
 
@@ -640,6 +965,88 @@ const createPdfReport = (filename, title, summaryItems, tableHeaders, tableRows,
 
       drawPdfFooter(doc);
       doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+};
+
+const createXlsxReport = (filename, title, summaryItems = [], tableHeaders = null, tableRows = [], saveSubdir = null, sections = null) => {
+  return new Promise((resolve, reject) => {
+    try {
+      const wb = new XLSX.Workbook();
+      const NAVY = "FF1B2A5B";
+      const BLUE = "FF2563EB";
+      const MONEY = "FF059669";
+
+      const addTableSheet = (ws, headers, rows) => {
+        if (!headers || !headers.length) return;
+
+        const headerRow = ws.addRow(headers.map(h => h.label));
+        headerRow.eachCell(cell => {
+          cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: NAVY } };
+          cell.alignment = { vertical: "middle" };
+        });
+        headerRow.height = 20;
+
+        (rows || []).forEach(r => {
+          const row = ws.addRow(headers.map(h => {
+            const v = r[h.key];
+            return v != null ? String(v) : "";
+          }));
+          row.eachCell(cell => {
+            cell.alignment = { vertical: "middle" };
+            const colIdx = cell.col;
+            const key = headers[colIdx - 1] ? headers[colIdx - 1].key : null;
+            const isAmount = key && /(amount|paid|due|balance|debit|credit|taxable|gst|cgst|sgst|igst|total|price|cost|value|profit|expense|collection|charge|income)/i.test(key);
+            if (isAmount) cell.font = { color: { argb: MONEY }, bold: true };
+          });
+        });
+      };
+
+      if (summaryItems.length) {
+        const wsSummary = wb.addWorksheet("Summary");
+        const titleCell = wsSummary.getCell("A1");
+        titleCell.value = title;
+        titleCell.font = { bold: true, size: 16, color: { argb: NAVY } };
+        wsSummary.getCell("A3").value = "Label";
+        wsSummary.getCell("B3").value = "Value";
+        wsSummary.getRow(3).eachCell(cell => {
+          cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BLUE } };
+        });
+        summaryItems.forEach(s => {
+          const r = wsSummary.addRow([s.label, s.value]);
+          r.eachCell(cell => { cell.alignment = { vertical: "middle" }; });
+        });
+        wsSummary.columns = [{ width: 30 }, { width: 40 }];
+      }
+
+      if (sections && Array.isArray(sections) && sections.length) {
+        sections.forEach((sec, idx) => {
+          if (!sec.headers || !sec.headers.length) return;
+          const ws = wb.addWorksheet(`Sheet ${idx + 1}`);
+          addTableSheet(ws, sec.headers, sec.rows || []);
+          ws.columns = sec.headers.map(() => ({ width: 22 }));
+        });
+      } else if (tableHeaders && tableHeaders.length) {
+        const ws = wb.addWorksheet("Details");
+        addTableSheet(ws, tableHeaders, tableRows);
+        ws.columns = tableHeaders.map(() => ({ width: 22 }));
+      }
+
+      wb.xlsx.writeBuffer().then((buffer) => {
+        const xlsxBuffer = Buffer.from(buffer);
+        let savedRel = null;
+        if (saveSubdir) {
+          const dir = path.join(reportsDir, saveSubdir);
+          fs.mkdirSync(dir, { recursive: true });
+          fs.writeFileSync(path.join(dir, filename), xlsxBuffer);
+          savedRel = `${saveSubdir}/${filename}`;
+        }
+        resolve({ xlsxBuffer, savedRel, filesize: xlsxBuffer.length });
+      }).catch(reject);
     } catch (err) {
       reject(err);
     }
@@ -706,8 +1113,10 @@ module.exports = {
     REPORT_GROUPS,
     REPORTS,
     resolveReportMeta,
+    resolveLedgerParty,
     buildReport,
     createPdfReport,
+    createXlsxReport,
     archiveReportRecord,
     getArchivedReports,
     deleteArchivedReport

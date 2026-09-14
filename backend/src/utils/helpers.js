@@ -35,6 +35,7 @@ const formatStaffRoleLabel = (role) => {
   if (role === "sales") return "Sales";
   if (role === "employee") return "Employee";
   if (role === "admin") return "Admin";
+  if (role === "auditor") return "Auditor";
   return "Staff";
 };
 

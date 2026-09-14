@@ -13,11 +13,16 @@ import {
   Calendar,
   MapPin,
   Camera,
-  MessageSquare
+  MessageSquare,
+  Package,
+  AlertTriangle,
+  Undo2
 } from 'lucide-react';
 import { formatCurrencyValue, formatDateValue, isSiteVisitType } from '../utils/helpers';
 import { useNavigate } from 'react-router-dom';
 import UsedItemsModal from '../components/UsedItemsModal';
+import RequestPartsModal from '../components/RequestPartsModal';
+import ChallanReturnModal from '../components/ChallanReturnModal';
 import { toast } from '../utils/toast';
 
 const TechnicianDashboard = () => {
@@ -26,6 +31,8 @@ const TechnicianDashboard = () => {
   const queryClient = useQueryClient();
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
   const [modalMode, setModalMode] = useState<'complete' | 'update'>('complete');
+  const [partsRequestId, setPartsRequestId] = useState<string | null>(null);
+  const [returnFor, setReturnFor] = useState<any>(null);
 
   const { data: requests, isLoading } = useQuery({
     queryKey: ['tech-tasks'],
@@ -53,6 +60,17 @@ const TechnicianDashboard = () => {
     }
   });
 
+  const collectPartMutation = useMutation({
+    mutationFn: (id: string) => serviceRequestService.markPartsCollected(id),
+    onSuccess: () => {
+      toast('Parts collected — marking as done', 'success');
+      queryClient.invalidateQueries({ queryKey: ['tech-tasks'] });
+    },
+    onError: (err: any) => {
+      toast(err.response?.data?.error || 'Failed to mark collected', 'error');
+    }
+  });
+
   if (isLoading) return (
     <Layout>
       <div className="animate-pulse space-y-8">
@@ -64,8 +82,8 @@ const TechnicianDashboard = () => {
     </Layout>
   );
 
-  const pendingJobs = requests?.filter(r => r.status === 'Scheduled') || [];
-  const completedToday = requests?.filter(r => r.status === 'Completed') || [];
+  const pendingJobs: any[] = requests?.filter((r: any) => r.status === 'Scheduled') || [];
+  const completedToday = requests?.filter((r: any) => r.status === 'Completed') || [];
 
   return (
     <Layout>
@@ -150,20 +168,56 @@ const TechnicianDashboard = () => {
                           </div>
                        </div>
 
-                       {isSiteVisitType(r.device_type) ? (
-                          <button
-                             onClick={() => navigate(`/tickets/${r.id}/survey`)}
-                            className="px-6 py-3 bg-blue text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue-600 transition-all shadow-lg shadow-blue/20"
-                          >
-                             Start Survey
-                          </button>
-                       ) : (
+                       {r.part_request_status === 'available' && (
+                         <button
+                           onClick={() => collectPartMutation.mutate(r.id)}
+                           className="px-5 py-3 bg-amber-500 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-amber-600 transition-all shadow-lg shadow-amber-500/20 flex items-center gap-2"
+                         >
+                           <Package className="h-4 w-4" /> Collect Part
+                         </button>
+                       )}
+
+                       {r.part_request_status === 'requested' && (
+                         <div className="px-4 py-2 bg-orange-50 border border-orange-200 rounded-2xl text-[10px] font-bold text-orange-700 uppercase tracking-widest flex items-center gap-2">
+                           <AlertTriangle className="h-3.5 w-3.5" /> Parts Requested — Waiting
+                         </div>
+                       )}
+
+{isSiteVisitType(r.device_type) ? (
+                          !(r.survey_status === 'submitted' || r.survey_status === 'reviewed') ? (
+                            <button
+                              onClick={() => navigate(`/tickets/${r.id}/survey`)}
+                              className="px-6 py-3 bg-blue text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue-600 transition-all shadow-lg shadow-blue/20"
+                            >
+                              Start Survey
+                            </button>
+                          ) : !(r.part_request_status === 'available' || r.part_request_status === 'collected') ? (
+                            <div className="px-5 py-3 bg-green-50 border border-green-200 rounded-2xl text-[10px] font-bold text-green-700 uppercase tracking-widest flex items-center gap-2">
+                              <CheckCircle2 className="h-3.5 w-3.5" /> Survey Submitted — Awaiting Quotation
+                            </div>
+                          ) : (
+                            <div className="flex gap-2">
+                               <button
+                                 onClick={() => { setSelectedRequestId(r.id); setModalMode('update'); }}
+                                 className="px-5 py-3 bg-soft text-blue rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue/10 transition-all border border-blue/10"
+                               >
+                                  Update / Parts
+                               </button>
+                               <button
+                                 onClick={() => { setSelectedRequestId(r.id); setModalMode('complete'); }}
+                                 className="px-5 py-3 bg-green-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-green-700 transition-all shadow-lg shadow-green-600/20"
+                               >
+                                  Complete
+                               </button>
+                            </div>
+                          )
+) : (
                           <div className="flex gap-2">
                              <button
                                onClick={() => { setSelectedRequestId(r.id); setModalMode('update'); }}
                                className="px-5 py-3 bg-soft text-blue rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue/10 transition-all border border-blue/10"
                              >
-                                Update
+                                Update / Parts
                              </button>
                              <button
                                onClick={() => { setSelectedRequestId(r.id); setModalMode('complete'); }}
@@ -172,6 +226,14 @@ const TechnicianDashboard = () => {
                                 Complete
                              </button>
                           </div>
+                       )}
+                       {r.challan && r.challan.billing_status === 'pending' && (
+                          <button
+                            onClick={() => setReturnFor({ request: r, dc: r.challan })}
+                            className="px-5 py-3 bg-amber-500 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-amber-600 transition-all shadow-lg shadow-amber-500/20 flex items-center gap-2"
+                          >
+                            <Undo2 className="h-4 w-4" /> Record Return
+                          </button>
                        )}
                     </div>
                  </div>
@@ -190,6 +252,8 @@ const TechnicianDashboard = () => {
 
       {selectedRequestId && (
         <UsedItemsModal
+          requestId={selectedRequestId}
+          challan={currentRequest?.challan}
           onClose={() => setSelectedRequestId(null)}
           loading={completeMutation.isPending}
           mode={modalMode}
@@ -206,6 +270,27 @@ const TechnicianDashboard = () => {
               notes,
               mode: modalMode
             });
+          }}
+        />
+      )}
+
+      {partsRequestId && (
+        <RequestPartsModal
+          requestId={partsRequestId}
+          onClose={() => setPartsRequestId(null)}
+          onSuccess={() => queryClient.invalidateQueries({ queryKey: ['tech-tasks'] })}
+        />
+      )}
+
+      {returnFor && (
+        <ChallanReturnModal
+          dc={returnFor.dc}
+          onClose={() => setReturnFor(null)}
+          onConfirm={async (payload) => {
+            await serviceRequestService.recordChallanReturn(returnFor.request.id, payload);
+            toast('Return recorded — DC & stock updated', 'success');
+            queryClient.invalidateQueries({ queryKey: ['tech-tasks'] });
+            setReturnFor(null);
           }}
         />
       )}

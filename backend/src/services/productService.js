@@ -1,10 +1,15 @@
 const { db, makeId, nowIso } = require("../../db");
 const { mapProductPricing } = require("../utils/productHelpers");
 
+const triggerStockScan = () => {
+  try { require("./stockAlertService").scanForAlerts(); } catch (e) {}
+};
+
 const getAllActiveProducts = (limit, offset) => {
   return db
     .prepare(`
-      SELECT id, type, name, price, description, discount_percent, stock, updated_by_employee_name, hsn_code, gst_rate, active, unit_type, base_unit, sub_unit, conversion_factor, loose_stock, image_url
+      SELECT id, type, name, price, description, discount_percent, stock, updated_by_employee_name, hsn_code, gst_rate, active, unit_type, base_unit, sub_unit, conversion_factor, loose_stock, image_url,
+        (SELECT p.unit_cost FROM purchases p WHERE p.product_id = products.id ORDER BY p.purchase_date DESC, p.created_at DESC LIMIT 1) as last_cost
       FROM products
       WHERE active = 1 AND (stock > 0 OR type = 'Service')
       ORDER BY name
@@ -153,6 +158,7 @@ const returnStock = (productId, qtyToReturn) => {
   } else {
     db.prepare("UPDATE products SET stock = stock + ? WHERE id = ?").run(qtyToReturn, productId);
   }
+  triggerStockScan();
 };
 
 const deductStock = (productId, qtyToDeduct) => {
@@ -186,6 +192,7 @@ const deductStock = (productId, qtyToDeduct) => {
   } else {
     db.prepare("UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?").run(qtyToDeduct, productId, qtyToDeduct);
   }
+  triggerStockScan();
 };
 
 module.exports = {

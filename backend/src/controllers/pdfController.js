@@ -72,6 +72,24 @@ const getChallanPdf = async (req, res) => {
   }
 };
 
+const getQuotationPdf = async (req, res) => {
+  try {
+    const doc = await pdfService.generateQuotationPdf(req.params.id);
+    const chunks = [];
+    doc.on("data", chunk => chunks.push(chunk));
+    doc.on("end", () => {
+      const pdfBuffer = Buffer.concat(chunks);
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="quotation-${req.params.id.slice(-6)}.pdf"`);
+      res.send(pdfBuffer);
+    });
+    doc.end();
+  } catch (err) {
+    console.error("Quotation PDF Error:", err);
+    res.status(500).json({ error: err.message || "Failed to generate quotation" });
+  }
+};
+
 const getCompanyProfilePdf = async (req, res) => {
   try {
     const doc = await pdfService.generateCompanyProfilePdf();
@@ -90,5 +108,6 @@ module.exports = {
   getServiceBill,
   getSurveyPdf,
   getChallanPdf,
+  getQuotationPdf,
   getCompanyProfilePdf
 };

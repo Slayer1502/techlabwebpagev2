@@ -28,6 +28,7 @@ export interface Product {
   sub_unit?: string;
   conversion_factor?: number;
   loose_stock?: number;
+  min_stock?: number;
   imageUrl?: string | null;
 }
 
@@ -63,6 +64,54 @@ export interface ServiceRequest {
   estimated_cost?: number;
   linked_dc_id?: string;
   status_notes?: string;
+  challan?: any;
+  device_intake?: string;
+  buyout_requisition?: string;
+}
+
+export type BuyoutStatus = 'quote_requested' | 'uploaded' | 'po_placed' | 'received' | 'rejected';
+
+export interface BuyoutRequisition {
+  status: BuyoutStatus;
+  supplierQuoteId?: string;
+  quoteNumber?: string;
+  poId?: string;
+  poNumber?: string;
+}
+
+export interface SupplierQuoteItem {
+  id: string;
+  quote_id: string;
+  product_id?: string | null;
+  product_name: string;
+  quantity: number;
+  unit_cost: number;
+  brand?: string | null;
+  model?: string | null;
+}
+
+export interface SupplierQuote {
+  id: string;
+  quote_number: string;
+  supplier_id: string;
+  supplier_name?: string;
+  quote_date: string;
+  valid_until?: string | null;
+  notes?: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  total_amount: number;
+  pdf_path?: string | null;
+  pdf_name?: string | null;
+  for_enquiry_id?: string | null;
+  service_request_id?: string | null;
+  po_id?: string | null;
+  po_number?: string | null;
+  service_customer_name?: string | null;
+  service_device_type?: string | null;
+  item_count?: number;
+  created_at: string;
+  approved_at?: string | null;
+  items?: SupplierQuoteItem[];
 }
 
 export interface Party {
@@ -72,6 +121,7 @@ export interface Party {
   email?: string;
   address?: string;
   gstin?: string;
+  gst_number?: string;
   is_customer: boolean;
   is_supplier: boolean;
   created_at: string;
@@ -111,8 +161,10 @@ export interface Enquiry {
   quantity?: number;
   cost_price?: number;
   quoted_price?: number;
+  valid_until?: string;
   quote_options?: string;
   po_id?: string;
+  po_ids?: string;
   advance_amount?: number;
   advance_mode?: string;
   advance_date?: string;
@@ -140,7 +192,9 @@ export interface Quotation {
   items?: QuotationItem[];
   created_at: string;
   service_request_id?: string;
+  enquiry_id?: string;
   converted_at?: string;
+  po_ids?: string;
 }
 
 export interface QuotationItem {
@@ -148,6 +202,11 @@ export interface QuotationItem {
   product_name: string;
   unit_price: number;
   quantity: number;
+  unit_cost?: number;
+  source?: 'inventory' | 'procurement';
+  supplier_id?: string | null;
+  sq_id?: string | null;
+  sq_number?: string | null;
 }
 
 export interface ApiResponse<T> {

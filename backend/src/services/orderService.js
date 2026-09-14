@@ -1,4 +1,4 @@
-const { db, makeId, nowIso } = require("../../db");
+const { db, makeId, nowIso, nextBillNumber } = require("../../db");
 const { syncCustomerToParties } = require("./customerService");
 const { mapProductPricing } = require("../utils/productHelpers");
 const { deductStock } = require("./productService");
@@ -62,6 +62,7 @@ const createOrderForCustomer = ({ customerName, mobile, address, items, isGstBil
 
   const orderId = makeId("order");
   const orderDate = createdAt || nowIso().slice(0, 10);
+  const billNumber = nextBillNumber(orderDate);
 
   const taxableAmount = processedItems.reduce((sum, item) => sum + (item.unitTaxable * item.qty), 0);
   const gstTotal = processedItems.reduce((sum, item) => sum + (item.unitGst * item.qty), 0);
@@ -70,9 +71,9 @@ const createOrderForCustomer = ({ customerName, mobile, address, items, isGstBil
   const totalAmount = taxableAmount + gstTotal;
 
   db.prepare(`
-    INSERT INTO product_orders (id, customer_mobile, customer_name, customer_address, total_amount, taxable_amount, cgst_total, sgst_total, igst_total, gst_total, status, created_at, payment_status, payment_mode, payment_date, is_gst_bill)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
-  `).run(orderId, mobile, customerName, address || "", totalAmount, taxableAmount, cgstTotal, sgstTotal, gstTotal, orderStatus, orderDate, paymentStatus || 'pending', paymentMode || null, paymentDate || null, isGstEnabled ? 1 : 0);
+    INSERT INTO product_orders (id, customer_mobile, customer_name, customer_address, total_amount, taxable_amount, cgst_total, sgst_total, igst_total, gst_total, status, created_at, payment_status, payment_mode, payment_date, is_gst_bill, bill_number)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(orderId, mobile, customerName, address || "", totalAmount, taxableAmount, cgstTotal, sgstTotal, gstTotal, orderStatus, orderDate, paymentStatus || 'pending', paymentMode || null, paymentDate || null, isGstEnabled ? 1 : 0, billNumber);
 
   const insertOrderItem = db.prepare(`
     INSERT INTO order_items (id, order_id, product_id, product_name, price, hsn_code, gst_rate, taxable_amount, cgst_amount, sgst_amount, qty)
@@ -107,7 +108,7 @@ const getOrders = (limit, offset) => {
   return db.prepare(`
     SELECT * FROM (
       SELECT
-        o.id, o.customer_name, o.customer_mobile, o.customer_address,
+        o.id, o.bill_number, o.customer_name, o.customer_mobile, o.customer_address,
         o.total_amount, o.status, o.created_at, o.payment_status, o.payment_mode,
         (SELECT id FROM delivery_challans WHERE linked_order_id = o.id LIMIT 1) as linked_dc_id,
         'order' as source_type, o.is_gst_bill as is_gst
@@ -117,7 +118,7 @@ const getOrders = (limit, offset) => {
       UNION ALL
 
       SELECT
-        s.id, s.customer_name, s.customer_mobile, '' as customer_address,
+        s.id, s.bill_number, s.customer_name, s.customer_mobile, '' as customer_address,
         s.bill_amount as total_amount, s.status, COALESCE(s.bill_date, s.created_at) as created_at,
         s.payment_status, s.payment_mode,
         (SELECT id FROM delivery_challans WHERE source_type = 'service' AND source_id = s.id LIMIT 1) as linked_dc_id,

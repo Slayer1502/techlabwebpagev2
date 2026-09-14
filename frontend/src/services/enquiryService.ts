@@ -42,5 +42,14 @@ export const enquiryService = {
   markDelivered: async (id: string, paymentData?: any) => {
     const res = await api.post(`/sales/enquiries/${id}/deliver`, paymentData);
     return res.data;
+  },
+
+  recordPayment: async (id: string, paymentData: {
+    received: number,
+    mode: string,
+    date?: string
+  }) => {
+    const res = await api.post(`/sales/enquiries/${id}/payment`, paymentData);
+    return res.data;
   }
 };

@@ -20,6 +20,7 @@ import { formatCurrencyValue } from '../utils/helpers';
 import PartyModal from '../components/PartyModal';
 import { Party } from '../types';
 import { toast } from '../utils/toast';
+import { useAuthStore } from '../store/authStore';
 
 const PartiesPage = () => {
   const [tab, setTab] = useState<'customer' | 'supplier'>('customer');
@@ -28,6 +29,8 @@ const PartiesPage = () => {
   const [editingParty, setEditingParty] = useState<Party | null>(null);
 
   const queryClient = useQueryClient();
+  const { user } = useAuthStore();
+  const canWrite = ['admin', 'sales'].includes(user?.role || '');
 
   const { data, isLoading } = useQuery({
     queryKey: ['parties', tab],
@@ -79,6 +82,7 @@ const PartiesPage = () => {
             <h1 className="text-2xl font-bold text-navy">Party Management</h1>
             <p className="text-text-soft text-sm">Customers, Suppliers, and Relationship tracking</p>
           </div>
+          {canWrite && (
           <button
             onClick={() => { setEditingParty(null); setIsModalOpen(true); }}
             className="flex items-center justify-center gap-2 bg-blue text-white px-6 py-2.5 rounded-xl font-bold hover:bg-blue-600 transition-all shadow-lg shadow-blue/20"
@@ -86,6 +90,7 @@ const PartiesPage = () => {
             <Plus className="h-5 w-5" />
             Add New {tab === 'customer' ? 'Customer' : 'Supplier'}
           </button>
+          )}
         </div>
 
         {/* Stats */}
@@ -168,7 +173,7 @@ const PartiesPage = () => {
                         <td className="px-6 py-4">
                            <div>
                               <p className="text-sm font-bold text-navy">{p.name}</p>
-                              <p className="text-[10px] text-text-soft uppercase font-semibold">{p.gstin ? `GST: ${p.gstin}` : 'Standard Account'}</p>
+                              <p className="text-[10px] text-text-soft uppercase font-semibold">{p.gst_number || p.gstin ? `GST: ${p.gst_number || p.gstin}` : 'Standard Account'}</p>
                            </div>
                         </td>
                         <td className="px-6 py-4">
@@ -199,6 +204,8 @@ const PartiesPage = () => {
                         </td>
                         <td className="px-6 py-4 text-right">
                            <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                              {canWrite && (
+                              <>
                               <button
                                 onClick={() => handleEdit(p)}
                                 className="p-2 text-text-soft hover:bg-white hover:text-blue rounded-lg border border-transparent hover:border-blue/10 shadow-sm transition-all"
@@ -211,6 +218,8 @@ const PartiesPage = () => {
                               >
                                 <Trash2 className="h-4 w-4" />
                               </button>
+                              </>
+                              )}
                               <button className="p-2 text-blue hover:bg-blue hover:text-white rounded-lg shadow-sm border border-blue/10 transition-all">
                                 <ChevronRight className="h-4 w-4" />
                               </button>

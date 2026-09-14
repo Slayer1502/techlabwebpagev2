@@ -98,6 +98,7 @@ const StaffModal = ({ onClose, onSuccess }: Props) => {
                    <option value="employee">Service Coordinator</option>
                    <option value="sales">Sales & Inventory</option>
                    <option value="technician">Service Technician</option>
+                   <option value="auditor">Auditor (Read-Only)</option>
                    <option value="admin">System Admin</option>
                 </select>
              </div>

@@ -18,17 +18,19 @@ import {
   ArrowRight,
   Sparkles
 } from 'lucide-react';
-import { formatCurrencyValue, formatDateValue } from '../utils/helpers';
+import { formatCurrencyValue, formatDateValue, getEnquiryQuoteTotal, getEnquiryMargin } from '../utils/helpers';
 import { Enquiry, EnquiryStatus } from '../types';
 import { toast } from '../utils/toast';
 import EnquiryModal from '../components/EnquiryModal';
 import EnquiryDetailDrawer from '../components/EnquiryDetailDrawer';
+import ConfirmOrderModal from '../components/ConfirmOrderModal';
 
 const EnquiryPage = () => {
   const [search, setSearch] = useState('');
   const [sourceFilter, setSourceFilter] = useState<'all' | 'bni'>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedEnquiry, setSelectedEnquiry] = useState<Enquiry | null>(null);
+  const [confirmEnquiry, setConfirmEnquiry] = useState<Enquiry | null>(null);
 
   const queryClient = useQueryClient();
 
@@ -70,15 +72,20 @@ const EnquiryPage = () => {
               )}
 
               <div className="flex justify-between items-start mb-3">
-                 <div>
-                    <p className="text-sm font-bold text-navy leading-tight line-clamp-1">{enq.customer_name}</p>
+                 <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                       <p className="text-sm font-bold text-navy leading-tight truncate">{enq.customer_name}</p>
+                       <span className="flex items-center gap-1 text-[10px] font-bold text-text-soft shrink-0">
+                          <Smartphone className="h-3 w-3 text-blue" />{enq.customer_mobile}
+                       </span>
+                    </div>
                     {enq.lead_source && (
                        <span className={`inline-block mt-1 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider ${enq.lead_source.includes('BNI') ? 'bg-purple-100 text-purple-700 border border-purple-200' : 'bg-gray-100 text-text-soft'}`}>
                           {enq.lead_source}
                        </span>
                     )}
                  </div>
-                 <ChevronRight className="h-4 w-4 text-gray-300 group-hover:text-blue transition-colors" />
+                 <ChevronRight className="h-4 w-4 text-gray-300 group-hover:text-blue transition-colors shrink-0" />
               </div>
 
               <p className="text-xs text-text-soft font-medium mb-4 line-clamp-2 leading-relaxed">
@@ -86,16 +93,27 @@ const EnquiryPage = () => {
               </p>
 
               <div className="flex items-center justify-between mt-auto pt-3 border-t border-dashed">
-                 <div className="flex items-center gap-1.5">
-                    <div className="p-1 bg-soft rounded text-blue">
-                       <Smartphone className="h-3 w-3" />
-                    </div>
-                    <span className="text-[10px] font-bold text-text-soft">{enq.customer_mobile}</span>
-                 </div>
+                 {enq.status === 'quoted' && (
+                    <button
+                       onClick={(e) => { e.stopPropagation(); setConfirmEnquiry(enq); }}
+                       className="flex items-center gap-1 bg-green-600 text-white px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider hover:bg-green-700 transition-all shadow-sm"
+                    >
+                       <CheckCircle2 className="h-3 w-3" /> Confirm Order
+                    </button>
+                 )}
                  <div className="text-right">
                     <p className="text-[10px] font-black text-blue">
-                       {enq.quoted_price ? formatCurrencyValue(enq.quoted_price) : (enq.budget ? `~ ${formatCurrencyValue(enq.budget)}` : 'No Quote')}
+                       {getEnquiryQuoteTotal(enq.quote_options) ? formatCurrencyValue(getEnquiryQuoteTotal(enq.quote_options)) : (enq.budget ? `~ ${formatCurrencyValue(enq.budget)}` : 'No Quote')}
                     </p>
+                    {(() => {
+                      const m = getEnquiryMargin(enq.quote_options);
+                      if (m.totalCost <= 0) return null;
+                      return (
+                        <p className={`text-[9px] font-black mt-0.5 ${m.margin > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                          {m.margin > 0 ? '+' : ''}{formatCurrencyValue(m.margin)} ({m.marginPercent}%)
+                        </p>
+                      );
+                    })()}
                  </div>
               </div>
             </div>
@@ -191,6 +209,14 @@ const EnquiryPage = () => {
            enquiry={selectedEnquiry}
            onClose={() => setSelectedEnquiry(null)}
            onUpdate={() => queryClient.invalidateQueries({ queryKey: ['enquiries'] })}
+        />
+      )}
+
+      {confirmEnquiry && (
+        <ConfirmOrderModal
+          enquiry={confirmEnquiry}
+          onClose={() => setConfirmEnquiry(null)}
+          onSuccess={() => queryClient.invalidateQueries({ queryKey: ['enquiries'] })}
         />
       )}
     </Layout>

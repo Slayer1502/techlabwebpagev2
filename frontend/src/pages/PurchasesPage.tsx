@@ -19,14 +19,20 @@ import {
 } from 'lucide-react';
 import { formatCurrencyValue, formatDateValue } from '../utils/helpers';
 import { toast } from '../utils/toast';
+import { useAuthStore } from '../store/authStore';
 import PurchaseOrderModal from '../components/PurchaseOrderModal';
 import StockInModal from '../components/StockInModal';
+import UploadQuoteModal from '../components/UploadQuoteModal';
+import ReceiveOrderModal from '../components/ReceiveOrderModal';
 
 const PurchasesPage = () => {
   const [activeTab, setTab] = useState<'orders' | 'quotes' | 'history'>('orders');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isStockInModalOpen, setIsStockInModalOpen] = useState(false);
+  const [isUploadQuoteModalOpen, setIsUploadQuoteModalOpen] = useState(false);
+  const [receivePoId, setReceivePoId] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  const { user } = useAuthStore();
 
   const { data: orders, isLoading: ordersLoading } = useQuery({
     queryKey: ['purchase-orders'],
@@ -54,11 +60,20 @@ const PurchasesPage = () => {
     },
   });
 
+  const rejectMutation = useMutation({
+    mutationFn: (id: string) => purchaseService.rejectQuote(id),
+    onSuccess: () => {
+      toast('Quote rejected', 'success');
+      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+    },
+  });
+
   const StatusBadge = ({ status }: { status: string }) => {
     const styles: any = {
       pending: "bg-orange-100 text-orange-600",
+      ordered: "bg-cyan-100 text-cyan-600",
       approved: "bg-green-100 text-green-600",
-      received: "bg-blue-100 text-blue-600",
+      received: "bg-green-100 text-green-600",
       rejected: "bg-red-100 text-red-600",
       cancelled: "bg-gray-100 text-gray-600"
     };
@@ -134,10 +149,15 @@ const PurchasesPage = () => {
                           [1, 2, 3].map(i => <tr key={i} className="animate-pulse"><td colSpan={5} className="px-8 py-8"><div className="h-4 bg-gray-100 rounded-full w-full"></div></td></tr>)
                        ) : orders?.map((o: any) => (
                           <tr key={o.id} className="group hover:bg-soft/20 transition-colors">
-                             <td className="px-8 py-5">
-                                <p className="text-sm font-bold text-navy uppercase">#{o.id.slice(-8)}</p>
-                                <p className="text-[10px] text-text-soft">{formatDateValue(o.created_at)}</p>
-                             </td>
+<td className="px-8 py-5">
+                                 <p className="text-sm font-bold text-navy uppercase">#{o.id.slice(-8)}</p>
+                                 <div className="flex items-center gap-1.5 mt-1">
+                                    {o.service_request_id && (
+                                       <span className="px-2 py-0.5 rounded-md bg-violet-100 text-violet-600 text-[9px] font-bold uppercase tracking-wide">Service</span>
+                                    )}
+                                 </div>
+                                 <p className="text-[10px] text-text-soft">{formatDateValue(o.created_at)}</p>
+                              </td>
                              <td className="px-8 py-5">
                                 <div className="flex items-center gap-3">
                                    <Building2 className="h-4 w-4 text-blue" />
@@ -151,16 +171,19 @@ const PurchasesPage = () => {
                                 <StatusBadge status={o.status} />
                              </td>
                              <td className="px-8 py-5 text-right">
-                                <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                   {o.status === 'pending' && (
-                                      <button className="px-4 py-1.5 bg-blue text-white text-[10px] font-bold uppercase rounded-lg hover:bg-blue-600 transition-colors">
-                                         Receive Goods
-                                      </button>
-                                   )}
-                                   <button className="p-2 text-text-soft hover:bg-white hover:text-blue rounded-lg border border-transparent shadow-sm transition-all">
-                                      <ChevronRight className="h-4 w-4" />
-                                   </button>
-                                </div>
+<div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    {['ordered', 'pending'].includes(o.status) && (
+                                       <button
+                                         onClick={() => setReceivePoId(o.id)}
+                                         className="px-4 py-1.5 bg-blue text-white text-[10px] font-bold uppercase rounded-lg hover:bg-blue-600 transition-colors"
+                                       >
+                                          Receive Goods
+                                       </button>
+                                    )}
+                                    <button className="p-2 text-text-soft hover:bg-white hover:text-blue rounded-lg border border-transparent shadow-sm transition-all">
+                                       <ChevronRight className="h-4 w-4" />
+                                    </button>
+                                 </div>
                              </td>
                           </tr>
                        ))}
@@ -180,7 +203,7 @@ const PurchasesPage = () => {
                        <p className="text-xs text-text-soft font-bold uppercase tracking-tight">Pricing Review & Approval</p>
                     </div>
                  </div>
-                 <button className="flex items-center gap-2 bg-navy text-white px-5 py-2 rounded-xl text-xs font-bold hover:opacity-90 transition-all shadow-lg shadow-navy/20">
+                 <button onClick={() => setIsUploadQuoteModalOpen(true)} className="flex items-center gap-2 bg-navy text-white px-5 py-2 rounded-xl text-xs font-bold hover:opacity-90 transition-all shadow-lg shadow-navy/20">
                     <Upload className="h-4 w-4" /> Upload Quote
                  </button>
               </div>
@@ -198,53 +221,73 @@ const PurchasesPage = () => {
                     <tbody className="divide-y">
                        {quotesLoading ? (
                           [1, 2, 3].map(i => <tr key={i} className="animate-pulse"><td colSpan={5} className="px-8 py-8"><div className="h-4 bg-gray-100 rounded-full w-full"></div></td></tr>)
-                       ) : quotes?.map((q: any) => (
-                          <tr key={q.id} className="group hover:bg-soft/20 transition-colors">
-                             <td className="px-8 py-5">
-                                <p className="text-sm font-bold text-navy">Ref: {q.id.slice(-6)}</p>
-                                <button
-                                   onClick={() => window.open(`/api/sales/quotes/${q.id}/pdf`, '_blank')}
-                                   className="text-[10px] text-blue font-bold uppercase flex items-center gap-1 mt-1 hover:underline"
-                                >
-                                   <Download className="h-3 w-3" /> View Document
-                                </button>
-                             </td>
-                             <td className="px-8 py-5 text-sm font-semibold text-navy">
-                                {q.supplier_name}
-                             </td>
-                             <td className="px-8 py-5">
-                                <span className="px-2 py-1 bg-gray-100 rounded text-[10px] font-bold text-text-soft">
-                                   {q.item_count || 0} Products
-                                </span>
-                             </td>
-                             <td className="px-8 py-5">
-                                <StatusBadge status={q.status} />
-                             </td>
-                             <td className="px-8 py-5 text-right">
-                                <div className="flex justify-end gap-2">
-                                   {q.status === 'pending' ? (
-                                      <>
-                                         <button
-                                            onClick={() => { if(window.confirm('Approve this quote?')) approveMutation.mutate(q.id); }}
-                                            className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-all"
-                                            title="Approve"
-                                         >
-                                            <CheckCircle2 className="h-5 w-5" />
-                                         </button>
-                                         <button
-                                            className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                                            title="Reject"
-                                         >
-                                            <XCircle className="h-5 w-5" />
-                                         </button>
-                                      </>
-                                   ) : (
-                                      <CheckCircle2 className={`h-5 w-5 ${q.status === 'approved' ? 'text-green-600' : 'text-gray-200'}`} />
-                                   )}
-                                </div>
-                             </td>
-                          </tr>
-                       ))}
+) : quotes?.map((q: any) => (
+                           <tr key={q.id} className="group hover:bg-soft/20 transition-colors">
+                              <td className="px-8 py-5">
+                                 <p className="text-sm font-bold text-navy">Ref: {q.id.slice(-6)}</p>
+                                 <div className="flex items-center gap-1.5 mt-1">
+                                    {q.service_request_id ? (
+                                       <span className="px-2 py-0.5 rounded-md bg-violet-100 text-violet-600 text-[9px] font-bold uppercase tracking-wide">Service</span>
+                                    ) : q.for_enquiry_id ? (
+                                       <span className="px-2 py-0.5 rounded-md bg-cyan-100 text-cyan-600 text-[9px] font-bold uppercase tracking-wide">Enquiry</span>
+                                    ) : (
+                                       <span className="px-2 py-0.5 rounded-md bg-gray-100 text-gray-500 text-[9px] font-bold uppercase tracking-wide">Direct</span>
+                                    )}
+                                    {q.po_number && (
+                                       <span className="px-2 py-0.5 rounded-md bg-green-100 text-green-600 text-[9px] font-bold uppercase tracking-wide">PO {q.po_number}</span>
+                                    )}
+                                 </div>
+                                 <button
+                                    onClick={() => window.open(`/api/sales/quotes/${q.id}/pdf`, '_blank')}
+                                    className="text-[10px] text-blue font-bold uppercase flex items-center gap-1 mt-1 hover:underline"
+                                 >
+                                    <Download className="h-3 w-3" /> View Document
+                                 </button>
+                              </td>
+                              <td className="px-8 py-5 text-sm font-semibold text-navy">
+                                 {q.supplier_name}
+                              </td>
+                              <td className="px-8 py-5">
+                                 <p className="px-2 py-1 bg-gray-100 rounded text-[10px] font-bold text-text-soft">
+                                    {q.item_count || 0} Products
+                                 </p>
+                                 {q.total_amount > 0 && (
+                                    <p className="text-[11px] font-bold text-navy mt-1">{formatCurrencyValue(q.total_amount)}</p>
+                                 )}
+                              </td>
+                              <td className="px-8 py-5">
+                                 <StatusBadge status={q.status} />
+                              </td>
+                              <td className="px-8 py-5 text-right">
+                                 <div className="flex justify-end gap-2">
+                                    {q.status === 'pending' ? (
+                                       <>
+                                          {((q.service_request_id && user?.role === 'admin') || !q.service_request_id) && (
+                                             <button
+                                                onClick={() => { if(window.confirm('Approve this quote?')) approveMutation.mutate(q.id); }}
+                                                className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-all"
+                                                title="Approve"
+                                             >
+                                                <CheckCircle2 className="h-5 w-5" />
+                                             </button>
+                                          )}
+                                          {(!q.service_request_id || user?.role === 'admin') && (
+                                             <button
+                                                onClick={() => { if(window.confirm('Reject this quote?')) rejectMutation.mutate(q.id); }}
+                                                className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                                                title="Reject"
+                                             >
+                                                <XCircle className="h-5 w-5" />
+                                             </button>
+                                          )}
+                                       </>
+                                    ) : (
+                                       <CheckCircle2 className={`h-5 w-5 ${q.status === 'approved' ? 'text-green-600' : 'text-gray-200'}`} />
+                                    )}
+                                 </div>
+                              </td>
+                           </tr>
+                        ))}
                     </tbody>
                  </table>
               </div>
@@ -327,6 +370,25 @@ const PurchasesPage = () => {
         <StockInModal
            onClose={() => setIsStockInModalOpen(false)}
            onSuccess={() => queryClient.invalidateQueries({ queryKey: ['direct-purchases'] })}
+        />
+      )}
+      {isUploadQuoteModalOpen && (
+        <UploadQuoteModal
+           onClose={() => setIsUploadQuoteModalOpen(false)}
+           onSuccess={() => {
+             queryClient.invalidateQueries({ queryKey: ['quotes'] });
+             queryClient.invalidateQueries({ queryKey: ['quotes-pending'] });
+           }}
+        />
+      )}
+      {receivePoId && (
+        <ReceiveOrderModal
+           poId={receivePoId}
+           onClose={() => setReceivePoId(null)}
+           onSuccess={() => {
+             setReceivePoId(null);
+             queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+           }}
         />
       )}
     </Layout>

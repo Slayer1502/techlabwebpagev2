@@ -1,7 +1,15 @@
 const page = document.body.dataset.page;
 const escapeHtml = (str) => String(str ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const setHtml = (el, html) => { if (el) el.innerHTML = html; };
-const refreshPage = () => { initPage(); if (typeof lucide !== 'undefined') lucide.createIcons(); mountThemeToggle(); };
+const reportPageError = (error) => {
+  console.error("TECHLAB: page render failed", error);
+  showToast("Unable to load this page. Please refresh and try again.", "error");
+};
+const refreshPage = () => {
+  initPage().catch(reportPageError);
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+  mountThemeToggle();
+};
 const refreshIcons = () => { if (typeof lucide !== 'undefined') lucide.createIcons(); };
 const themeStorageKey = "techlab_theme";
 const themeModeKey = "techlab_theme_mode";
@@ -268,14 +276,10 @@ const renderSurveyView = (survey, containerId, interactive = false, requestId = 
         window.openUsedItemsModal(requestId, async (usedItems, conveyanceExpense) => {
           try {
             statusEl.textContent = 'Completing job...';
-            const resp = await fetch(`/api/technician/service-requests/${requestId}/job-complete`, {
+            await api(`/api/technician/service-requests/${requestId}/job-complete`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ actual_meter_usage: cableActuals, used_items: usedItems, conveyance_expense: conveyanceExpense }),
-              credentials: 'include',
             });
-            const data = await resp.json();
-            if (!resp.ok) throw new Error(data.error || 'Failed');
             window.closeUsedItemsModal();
             statusEl.textContent = 'Job completed successfully!';
             setTimeout(() => refreshPage(), 1000);
@@ -538,13 +542,15 @@ const addWorkingDays = (dateStr, daysToAdd) => {
 };
 
 const api = async (url, options = {}) => {
+  const { headers: optionHeaders = {}, ...restOptions } = options;
+  const isFormData = typeof FormData !== "undefined" && restOptions.body instanceof FormData;
   const requestOptions = {
     credentials: "include",
+    ...restOptions,
     headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
+      ...optionHeaders,
     },
-    ...options,
   };
 
   let response = await fetch(url, requestOptions);
@@ -835,12 +841,15 @@ const renderProductManagementSection = (products, prefix, title) => {
           <p id="${prefix}-product-table-status" class="inline-status"></p>
         </div>
         <div class="admin-product-card-grid">
-          ${products.length ? products.map((product) => `
+          ${products.length ? products.map((product) => {
+            const pimg = product.imageUrl || product.image_url;
+            return `
             <article class="admin-product-card">
               <div class="admin-product-card-top">
                 <span class="chip info">${escapeHtml(product.type)}</span>
                 ${product.discountPercent ? `<span class="chip success">${product.discountPercent}% off</span>` : `<span class="chip">Standard price</span>`}
               </div>
+              ${pimg ? `<div class="admin-product-card-img"><img src="${escapeHtml(pimg)}" alt="" /></div>` : ''}
               <h4>${escapeHtml(product.name)}</h4>
               <p>${escapeHtml(product.description)}</p>
               <div class="admin-product-card-pricing">
@@ -853,8 +862,8 @@ const renderProductManagementSection = (products, prefix, title) => {
               <div class="action-stack">
                 <button class="button button-secondary" type="button" data-remove-product="${product.id}">Remove</button>
               </div>
-            </article>
-          `).join("") : `<div class="empty-message">No products available.</div>`}
+            </article>`;
+          }).join("") : `<div class="empty-message">No products available.</div>`}
         </div>
       </article>
     </section>
@@ -1067,7 +1076,7 @@ window.renderAnalyticsView = async (isSales = false) => {
 
   } catch (err) {
     console.error("TECHLAB Analytics Error:", err);
-    container.innerHTML = `<div style="padding:40px; text-align:center; color:var(--danger);">Failed to load analytics: ${err.message}</div>`;
+    container.innerHTML = `<div style="padding:40px; text-align:center; color:var(--danger);">Failed to load analytics: ${escapeHtml(err.message)}</div>`;
   }
 };
 
@@ -1211,11 +1220,17 @@ const renderProductsPage = async () => {
   
   const selectedProductIds = [];
   
-  productGrid.innerHTML = products.map((product) => `
+  productGrid.innerHTML = products.map((product) => {
+    const pimg = product.image_url || product.imageUrl;
+    const pmin = product.min_stock || 5;
+    const plow = product.stock <= pmin;
+    return `
     <article class="product-card">
+      ${pimg ? `<div class="product-card-img"><img src="${escapeHtml(pimg)}" alt="" /></div>` : ""}
       <div class="product-card-top">
         <span class="product-type">${escapeHtml(product.type)}</span>
         ${product.discountPercent ? `<span class="discount-pill">${product.discountPercent}% off</span>` : ""}
+        ${plow ? `<span class="discount-pill danger">Low Stock</span>` : ""}
       </div>
       <h3>${escapeHtml(product.name)}</h3>
       <p>${escapeHtml(product.description)}</p>
@@ -1225,7 +1240,8 @@ const renderProductsPage = async () => {
       </div>
       <button class="button button-primary" data-add-cart="${product.id}">Add to Cart</button>
     </article>
-  `).join("");
+  `;
+  }).join("");
   
   const renderCart = () => {
     const cartList = document.querySelector("#cart-list");
@@ -3730,12 +3746,25 @@ const renderTechnicianPage = async () => {
     const photoPreview = document.getElementById('survey-photo-preview');
     let selectedPhotoFiles = [];
 
-    photoInput.addEventListener('change', (e) => {
-      selectedPhotoFiles = Array.from(e.target.files);
+    const renderPhotoPreview = () => {
       photoPreview.innerHTML = selectedPhotoFiles.map((file, i) => {
         const url = URL.createObjectURL(file);
-        return `<div class="survey-photo-thumb"><img src="${url}" alt="Photo ${i + 1}" /><button type="button" onclick="this.parentElement.remove(); selectedPhotoFiles.splice(${i}, 1);">&times;</button></div>`;
+        return `<div class="survey-photo-thumb"><img src="${url}" alt="Photo ${i + 1}" /><button type="button" data-remove-photo="${i}" aria-label="Remove photo">&times;</button></div>`;
       }).join('');
+    };
+
+    photoInput.addEventListener('change', (e) => {
+      selectedPhotoFiles = Array.from(e.target.files || []);
+      renderPhotoPreview();
+    });
+
+    photoPreview.addEventListener('click', (e) => {
+      const button = e.target.closest('[data-remove-photo]');
+      if (!button) return;
+      const index = Number(button.dataset.removePhoto);
+      if (!Number.isInteger(index) || index < 0) return;
+      selectedPhotoFiles.splice(index, 1);
+      renderPhotoPreview();
     });
 
     // Open survey modal
@@ -4210,13 +4239,10 @@ const renderTechnicianPage = async () => {
 
       try {
         status.textContent = 'Submitting...';
-        const response = await fetch(`/api/technician/service-requests/${requestId}/survey`, {
+        await api(`/api/technician/service-requests/${requestId}/survey`, {
           method: 'POST',
           body: formData,
-          credentials: 'include',
         });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Failed to submit survey');
 
         status.textContent = 'Survey submitted successfully!';
         clearSurveyDraft(requestId);
@@ -4235,6 +4261,8 @@ let sqProducts = [];
 let sqItems = [];
 let sqPdfPath = "";
 let sqPdfName = "";
+let sqEnquiryId = null;
+let sqPostCreate = null;
 const currentSqId = window.__sqId = window.__sqId || { value: null };
 
 // Refresh pending-quote badge counts on the Purchase chrome tabs (sales + admin)
@@ -4747,6 +4775,204 @@ const renderSalesPage = async () => {
                 <textarea name="issue" required placeholder="Describe what the customer needs..." style="min-height: 60px; border-radius:12px;"></textarea>
               </div>
 
+              <!-- Device Intake Section (Device Service only) -->
+              <div id="device-intake-section" class="form-section" style="display:none;">
+                <div class="form-section-header">📋 Device Intake</div>
+                <div style="margin-bottom:12px;">
+                  <label style="font-weight:600; font-size:13px; margin-bottom:6px; display:block;">Device Sub-type</label>
+                  <div class="type-chip-group" id="device-subtype-chips">
+                    <input type="hidden" name="device_subtype" value="laptop" />
+                    <div class="type-chip active" data-val="laptop" style="flex:1; min-width:100px;">
+                      <span>Laptop / PC</span>
+                    </div>
+                    <div class="type-chip" data-val="printer" style="flex:1; min-width:100px;">
+                      <span>Printer</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Device Identification -->
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
+                  <label>Brand
+                    <div style="display:flex; gap:6px;">
+                      <select name="intake_brand" id="intake-brand-select" required style="flex:1;">
+                        <option value="">Select Brand</option>
+                        <option value="HP">HP</option>
+                        <option value="Dell">Dell</option>
+                        <option value="Lenovo">Lenovo</option>
+                        <option value="Asus">Asus</option>
+                        <option value="Acer">Acer</option>
+                        <option value="MSI">MSI</option>
+                        <option value="Apple">Apple</option>
+                        <option value="Samsung">Samsung</option>
+                        <option value="Canon">Canon</option>
+                        <option value="Epson">Epson</option>
+                        <option value="Brother">Brother</option>
+                        <option value="Ricoh">Ricoh</option>
+                        <option value="Xerox">Xerox</option>
+                        <option value="Other">Other</option>
+                      </select>
+                      <input type="text" name="intake_brand_other" id="intake-brand-other" placeholder="Brand name" style="display:none; flex:1;" />
+                    </div>
+                  </label>
+                  <label>Model <input type="text" name="intake_model" placeholder="e.g. HP 15sdy, ThinkPad T480" required /></label>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
+                  <label>Serial # <input type="text" name="intake_serial" placeholder="Optional" /></label>
+                  <label>Color <input type="text" name="intake_color" placeholder="e.g. Silver, Black" /></label>
+                </div>
+
+                <!-- Condition Checks - Laptop -->
+                <div id="intake-laptop-fields">
+                  <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
+                    <label>Body Condition
+                      <div class="filter-chips" style="flex-wrap:wrap;">
+                        <input type="hidden" name="intake_body" value="" />
+                        <span class="chip-btn" data-field="intake_body" data-val="Good">Good</span>
+                        <span class="chip-btn" data-field="intake_body" data-val="Minor Scratches">Scratches</span>
+                        <span class="chip-btn" data-field="intake_body" data-val="Dents">Dents</span>
+                        <span class="chip-btn" data-field="intake_body" data-val="Cracked">Cracked</span>
+                      </div>
+                    </label>
+                    <label>Screen Condition
+                      <div class="filter-chips" style="flex-wrap:wrap;">
+                        <input type="hidden" name="intake_screen" value="" />
+                        <span class="chip-btn" data-field="intake_screen" data-val="Good">Good</span>
+                        <span class="chip-btn" data-field="intake_screen" data-val="Scratched">Scratched</span>
+                        <span class="chip-btn" data-field="intake_screen" data-val="Cracked">Cracked</span>
+                        <span class="chip-btn" data-field="intake_screen" data-val="Dead Pixels">Dead Pixels</span>
+                        <span class="chip-btn" data-field="intake_screen" data-val="No Display">No Display</span>
+                      </div>
+                    </label>
+                  </div>
+                  <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:12px;">
+                    <label>Keyboard
+                      <div class="filter-chips" style="flex-wrap:wrap;">
+                        <input type="hidden" name="intake_keyboard" value="" />
+                        <span class="chip-btn" data-field="intake_keyboard" data-val="Good">Good</span>
+                        <span class="chip-btn" data-field="intake_keyboard" data-val="Some Keys Not Working">Keys Issue</span>
+                        <span class="chip-btn" data-field="intake_keyboard" data-val="Missing Keys">Missing</span>
+                        <span class="chip-btn" data-field="intake_keyboard" data-val="Replaced">Replaced</span>
+                      </div>
+                    </label>
+                    <label>Ports
+                      <div class="filter-chips" style="flex-wrap:wrap;">
+                        <input type="hidden" name="intake_ports" value="" />
+                        <span class="chip-btn" data-field="intake_ports" data-val="All Working">All OK</span>
+                        <span class="chip-btn" data-field="intake_ports" data-val="Some Not Working">Issue</span>
+                        <span class="chip-btn" data-field="intake_ports" data-val="Not Checked">Not Checked</span>
+                      </div>
+                    </label>
+                    <label>Power On
+                      <div class="filter-chips" style="flex-wrap:wrap;">
+                        <input type="hidden" name="intake_power" value="" />
+                        <span class="chip-btn" data-field="intake_power" data-val="Yes">Yes</span>
+                        <span class="chip-btn" data-field="intake_power" data-val="No">No</span>
+                        <span class="chip-btn" data-field="intake_power" data-val="Not Tested">Not Tested</span>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                <!-- Condition Checks - Printer -->
+                <div id="intake-printer-fields" style="display:none;">
+                  <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
+                    <label>Body Condition
+                      <div class="filter-chips" style="flex-wrap:wrap;">
+                        <input type="hidden" name="intake_body" value="" />
+                        <span class="chip-btn" data-field="intake_body" data-val="Good">Good</span>
+                        <span class="chip-btn" data-field="intake_body" data-val="Minor Scratches">Scratches</span>
+                        <span class="chip-btn" data-field="intake_body" data-val="Dents">Dents</span>
+                        <span class="chip-btn" data-field="intake_body" data-val="Cracked">Cracked</span>
+                      </div>
+                    </label>
+                    <label>Paper Tray
+                      <div class="filter-chips" style="flex-wrap:wrap;">
+                        <input type="hidden" name="intake_paper_tray" value="" />
+                        <span class="chip-btn" data-field="intake_paper_tray" data-val="Good">Good</span>
+                        <span class="chip-btn" data-field="intake_paper_tray" data-val="Damaged">Damaged</span>
+                        <span class="chip-btn" data-field="intake_paper_tray" data-val="Missing">Missing</span>
+                      </div>
+                    </label>
+                  </div>
+                  <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:12px;">
+                    <label>Print Head
+                      <div class="filter-chips" style="flex-wrap:wrap;">
+                        <input type="hidden" name="intake_print_head" value="" />
+                        <span class="chip-btn" data-field="intake_print_head" data-val="Working">Working</span>
+                        <span class="chip-btn" data-field="intake_print_head" data-val="Not Working">Not Working</span>
+                        <span class="chip-btn" data-field="intake_print_head" data-val="Not Checked">Not Checked</span>
+                      </div>
+                    </label>
+                    <label>Ink / Toner
+                      <div class="filter-chips" style="flex-wrap:wrap;">
+                        <input type="hidden" name="intake_ink_toner" value="" />
+                        <span class="chip-btn" data-field="intake_ink_toner" data-val="Present">Present</span>
+                        <span class="chip-btn" data-field="intake_ink_toner" data-val="Empty">Empty</span>
+                        <span class="chip-btn" data-field="intake_ink_toner" data-val="Not Checked">Not Checked</span>
+                      </div>
+                    </label>
+                    <label>Power On
+                      <div class="filter-chips" style="flex-wrap:wrap;">
+                        <input type="hidden" name="intake_power" value="" />
+                        <span class="chip-btn" data-field="intake_power" data-val="Yes">Yes</span>
+                        <span class="chip-btn" data-field="intake_power" data-val="No">No</span>
+                        <span class="chip-btn" data-field="intake_power" data-val="Not Tested">Not Tested</span>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                <!-- Accessories -->
+                <div style="margin-bottom:12px;">
+                  <label style="font-weight:600; font-size:13px; margin-bottom:6px; display:block;">Accessories Received</label>
+                  <div id="intake-accessories-laptop" style="display:flex; flex-wrap:wrap; gap:12px;">
+                    <label style="display:flex; align-items:center; gap:5px; font-weight:normal; font-size:13px;">
+                      <input type="checkbox" name="intake_acc_charger" value="Charger / Adapter" /> Charger / Adapter
+                    </label>
+                    <label style="display:flex; align-items:center; gap:5px; font-weight:normal; font-size:13px;">
+                      <input type="checkbox" name="intake_acc_bag" value="Carry Bag / Case" /> Carry Bag / Case
+                    </label>
+                    <label style="display:flex; align-items:center; gap:5px; font-weight:normal; font-size:13px;">
+                      <input type="checkbox" name="intake_acc_mouse" value="Mouse" /> Mouse
+                    </label>
+                    <label style="display:flex; align-items:center; gap:5px; font-weight:normal; font-size:13px;">
+                      <input type="checkbox" name="intake_acc_other_cb" value="Other" /> Other:
+                      <input type="text" name="intake_acc_other" placeholder="Specify" style="width:100px; padding:3px 6px; border:1px solid var(--border); border-radius:4px; font-size:12px;" />
+                    </label>
+                  </div>
+                  <div id="intake-accessories-printer" style="display:none; flex-wrap:wrap; gap:12px;">
+                    <label style="display:flex; align-items:center; gap:5px; font-weight:normal; font-size:13px;">
+                      <input type="checkbox" name="intake_acc_power_cable" value="Power Cable" /> Power Cable
+                    </label>
+                    <label style="display:flex; align-items:center; gap:5px; font-weight:normal; font-size:13px;">
+                      <input type="checkbox" name="intake_acc_usb_cable" value="USB Cable" /> USB Cable
+                    </label>
+                    <label style="display:flex; align-items:center; gap:5px; font-weight:normal; font-size:13px;">
+                      <input type="checkbox" name="intake_acc_cartridge" value="Ink / Toner Cartridge" /> Ink / Toner Cartridge
+                    </label>
+                    <label style="display:flex; align-items:center; gap:5px; font-weight:normal; font-size:13px;">
+                      <input type="checkbox" name="intake_acc_other_cb" value="Other" /> Other:
+                      <input type="text" name="intake_acc_other" placeholder="Specify" style="width:100px; padding:3px 6px; border:1px solid var(--border); border-radius:4px; font-size:12px;" />
+                    </label>
+                  </div>
+                </div>
+
+                <!-- Passwords -->
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;" id="intake-passwords-laptop">
+                  <label>BIOS Password <input type="text" name="intake_bios_password" placeholder="Optional" /></label>
+                  <label>Windows Login Password <input type="text" name="intake_login_password" placeholder="Optional" /></label>
+                </div>
+                <div style="display:none; margin-bottom:12px;" id="intake-passwords-printer">
+                  <label>Network Password <input type="text" name="intake_network_password" placeholder="Optional" /></label>
+                </div>
+
+                <!-- Pre-existing Damage -->
+                <label>Pre-existing Damage Notes <span style="color:var(--danger);">*</span>
+                  <textarea name="intake_damage" required placeholder="Describe any pre-existing damage (scratches, dents, cracks, etc.). Customer confirmed." style="min-height:50px; border-radius:8px;"></textarea>
+                </label>
+              </div>
+
               <div class="service-submit-area">
                 <button class="button button-primary" type="submit" style="height:48px; min-width:200px; font-size:15px;">
                   🚀 Create Service Request
@@ -4792,6 +5018,7 @@ const renderSalesPage = async () => {
 
                 const hasChallanItems = r.used_items || r.requested_parts || r.status === 'Completed' || r.part_request_status === 'available' || r.part_request_status === 'collected';
                 if (hasChallanItems) actions += `<button class="button button-small" type="button" data-challan-service="${r.id}" title="Generate a delivery challan for the goods/parts of this job">Delivery Challan</button>`;
+                if (r.device_type === 'Device Service' && r.device_intake) actions += `<button class="button button-small" type="button" data-view-intake='${escapeHtml(r.device_intake)}' title="View device intake details" style="background:#e8f5e9; color:#2e7d32; border:1px solid #a5d6a7;">📋 Device</button>`;
 
                 return `<tr><td>${r.id.slice(-8)}</td><td>${escapeHtml(r.customer_name)}</td><td>${escapeHtml(r.device_type)}${r.conveyance_expense > 0 ? `<br/><span class="inline-meta" style="color:var(--text-soft);">Exp: Rs. ${r.conveyance_expense}</span>` : ''}</td><td>${escapeHtml(r.issue)}</td><td>${escapeHtml(r.preferred_date)}</td><td>${escapeHtml(r.assigned_employee_name || '-')}</td><td>${escapeHtml(r.status)} ${partStatusHtml} ${surveyStatusHtml}</td><td class="action-stack">${actions}</td></tr>`;
               }).join('') : '<tr><td colspan="8">No active requests.</td></tr>'}</tbody>
@@ -4971,6 +5198,18 @@ const renderSalesPage = async () => {
             <button type="button" class="btn" id="delete-request-close">Go Back</button>
           </div>
           <p id="delete-request-status" class="inline-status"></p>
+        </div>
+      </div>
+      <div id="device-intake-view-modal" class="modal" style="display:none;">
+        <div class="modal-content" style="max-width:500px;">
+          <div class="modal-header">
+            <h2>📋 Device Intake Details</h2>
+            <button class="modal-close" onclick="document.getElementById('device-intake-view-modal').style.display='none'">&times;</button>
+          </div>
+          <div id="device-intake-view-content" style="line-height:1.8; font-size:14px;"></div>
+          <div style="margin-top:16px; text-align:right;">
+            <button class="btn" onclick="document.getElementById('device-intake-view-modal').style.display='none'">Close</button>
+          </div>
         </div>
       </div>
       <div class="sales-tab-content" data-content="products" style="display:none;">
@@ -5429,7 +5668,7 @@ const renderSalesPage = async () => {
         updateConsolidateUI();
         renderChallans();
       } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:var(--danger);">${err.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:var(--danger);">${escapeHtml(err.message)}</td></tr>`;
       }
     };
 
@@ -6814,9 +7053,7 @@ const renderSalesPage = async () => {
         status.textContent = "Uploading PDF...";
         status.style.color = "var(--muted)";
         try {
-          const response = await fetch("/api/sales/quotes/upload", { method: "POST", body: fd, credentials: "include" });
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.error || "Failed to upload PDF");
+          const data = await api("/api/sales/quotes/upload", { method: "POST", body: fd });
           sqPdfPath = data.fileUrl || "";
           sqPdfName = data.fileName || file.name;
           status.textContent = `Attached "${data.fileName}" as reference for admin approval.`;
@@ -6848,7 +7085,7 @@ const renderSalesPage = async () => {
         if (!supplierId) return alert("Please select a valid supplier from the list.");
         if (!validItems.length) return alert("Add at least one item to the quote.");
         try {
-          await api("/api/sales/quotes", {
+          const createdQuote = await api("/api/sales/quotes", {
             method: "POST",
             body: JSON.stringify({
               supplierId: supplierId,
@@ -6858,11 +7095,16 @@ const renderSalesPage = async () => {
               items: validItems,
               pdfPath: sqPdfPath,
               pdfName: sqPdfName,
+              enquiryId: sqEnquiryId || undefined,
             }),
           });
           closeSqModal();
           toast("Supplier quote saved", "success");
           loadSupplierQuotes();
+          const onCreate = sqPostCreate;
+          sqPostCreate = null;
+          sqEnquiryId = null;
+          if (typeof onCreate === "function") onCreate({ id: createdQuote.id, quoteNumber: createdQuote.quoteNumber, items: validItems });
         } catch (err) { alert(err.message); }
       });
     }
@@ -6877,26 +7119,38 @@ const renderSalesPage = async () => {
       }
     };
 
-    document.getElementById("add-quote-btn")?.addEventListener("click", async () => {
+    const openSqModal = async (prefill = {}) => {
+      sqPdfPath = "";
+      sqPdfName = "";
+      sqEnquiryId = prefill.enquiryId || null;
+      sqPostCreate = prefill.onCreate || null;
+      currentSqId.value = null;
+
       const form = document.getElementById("sq-form");
       form.reset();
       form.querySelector('[name="supplierId"]').value = "";
+      form.querySelector('[name="supplierSearch"]').value = "";
       sqItems = [];
-      sqPdfPath = "";
-      sqPdfName = "";
       const pdfInput = document.getElementById("sq-pdf-file");
       if (pdfInput) pdfInput.value = "";
       const pdfStatus = document.getElementById("sq-pdf-status");
       if (pdfStatus) { pdfStatus.textContent = ""; pdfStatus.style.color = ""; }
-      await populateSqSelects();
+      await populateSqSelects(prefill.supplierId || "");
       form.quoteDate.value = new Date().toISOString().slice(0, 10);
       const vd = new Date();
       vd.setDate(vd.getDate() + 14);
       form.validUntil.value = vd.toISOString().slice(0, 10);
-      addSqItem();
+      if (prefill.items && prefill.items.length) {
+        sqItems = prefill.items.map(it => ({ productId: it.productId || null, productName: it.productName || "", quantity: Math.max(1, it.quantity || 1), unitCost: Number(it.unitCost) || 0 }));
+        renderSqItems();
+      } else {
+        addSqItem();
+      }
       document.getElementById("sq-total-display").textContent = "";
       document.getElementById("sq-modal").classList.add("show");
-    });
+    };
+
+    document.getElementById("add-quote-btn")?.addEventListener("click", async () => openSqModal({}));
 
     const loadSupplierQuotes = async (status = "") => {
       const tbody = document.getElementById("quotes-tbody");
@@ -6973,10 +7227,10 @@ const renderSalesPage = async () => {
       const del = e.target.closest(".sq-delete-btn");
       if (view) return openSqView(view.dataset.sqId);
       if (appr) {
-        if (!confirm("Approve this quote? A Purchase Order will be created from it.")) return;
+        if (!confirm("Approve this quote?")) return;
         try {
           const r = await api(`/api/sales/quotes/${appr.dataset.sqId}/approve`, { method: "POST" });
-          toast(`Approved — ${r.poNumber} created`, "success");
+          toast(r.enquiryId ? "Approved — cost recorded, PO will be created on order confirmation" : `Approved — ${r.poNumber} created`, "success");
           renderSalesPage();
         } catch (err) { alert(err.message); }
         return;
@@ -7003,11 +7257,11 @@ const renderSalesPage = async () => {
     if (!window.__sqViewModalBound) {
       window.__sqViewModalBound = true;
       document.getElementById("sq-view-approve-btn")?.addEventListener("click", async () => {
-        if (!confirm("Approve this quote? A Purchase Order will be created from it.")) return;
+        if (!confirm("Approve this quote?")) return;
         try {
           const r = await api(`/api/sales/quotes/${currentSqId.value}/approve`, { method: "POST" });
           closeSqViewModal();
-          toast(`Approved — ${r.poNumber} created`, "success");
+          toast(r.enquiryId ? "Approved — cost recorded, PO will be created on order confirmation" : `Approved — ${r.poNumber} created`, "success");
           renderSalesPage();
         } catch (err) { alert(err.message); }
       });
@@ -7393,16 +7647,20 @@ const renderSalesPage = async () => {
           : `${p.stock} In Stock`;
 
         const finalPrice = p.price - (p.price * (p.discount_percent || 0) / 100);
+        const img = p.image_url || p.imageUrl;
+        const minStock = p.min_stock || 5;
+        const lowStock = p.stock <= minStock;
 
         return `
           <div class="pos-product-card" data-pos-add="${p.id}">
-            <div class="pos-card-icon">${getCatIcon(p.type)}</div>
+            ${img ? `<div class="pos-card-img"><img src="${escapeHtml(img)}" alt="" /></div>` : `<div class="pos-card-icon">${getCatIcon(p.type)}</div>`}
             <div class="pos-card-meta">${escapeHtml(p.type)}</div>
             <div class="pos-card-name">${escapeHtml(p.name)}</div>
             <div class="pos-card-price-row">
               <div class="pos-card-price">${formatCurrency(finalPrice)}</div>
-              <div class="pos-card-stock ${p.stock < 5 ? 'low' : ''}">${stockDisplay}</div>
+              <div class="pos-card-stock ${lowStock ? 'low' : ''}">${stockDisplay}</div>
             </div>
+            ${lowStock ? `<div class="pos-card-low-badge">Low Stock</div>` : ''}
           </div>
         `;
       }).join("");
@@ -8067,7 +8325,7 @@ const renderSalesPage = async () => {
         });
 
       } catch (err) {
-        tbody.innerHTML = '<tr><td colspan="8" style="color:var(--danger);">Failed to load sales: ' + err.message + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="color:var(--danger);">Failed to load sales: ' + escapeHtml(err.message) + '</td></tr>';
       }
     };
 
@@ -8178,14 +8436,29 @@ const renderSalesPage = async () => {
       const options = (() => { try { return e.quote_options ? JSON.parse(e.quote_options) : []; } catch { return []; } })();
       const quoteSummaryHtml = options.length
         ? `<div style="margin-bottom:24px;">
-             <p class="enq-v2-section-title">Quote Options (${options.length})</p>
-             ${options.map((o, i) => `
+             <p class="enq-v2-section-title">Quote Items (${options.length})</p>
+             ${options.map(o => {
+               const name = o.name || o.product || 'Draft';
+               const isProc = o.sqId || o.source === 'procurement' || (!o.name && o.supplierId);
+               const chip = isProc
+                 ? (o.sqNumber ? `<span class="chip warning" style="font-size:9px;">${escapeHtml(o.sqNumber)}</span>` : '<span class="chip info" style="font-size:9px;">Supply</span>')
+                 : '<span class="chip success" style="font-size:9px;">Stock</span>';
+               const margin = (Number(o.quotedPrice) || 0) - (Number(o.costPrice) || 0);
+               return `
                <div class="enq-option-row">
-                 <span class="opt-product">${escapeHtml(o.product || 'Draft')}</span>
-                 <span class="opt-price">${formatCurrency(o.quotedPrice || 0)}</span>
-               </div>`).join("")}
+                 <span class="opt-product">${escapeHtml(name)} ${chip}</span>
+                 <span class="opt-price">${formatCurrency(o.quotedPrice || 0)} <span style="color:var(--text-3); font-size:11px;">(${formatCurrency(margin)})</span></span>
+               </div>`;
+             }).join("")}
            </div>`
         : '';
+
+      let poInfoHtml = '';
+      const poIds = e.po_ids ? (() => { try { return JSON.parse(e.po_ids); } catch { return []; } })() : (e.po_id ? [e.po_id] : []);
+      if (poIds.length) {
+        poInfoHtml = `<p class="enq-v2-section-title">Purchase Order${poIds.length > 1 ? 's' : ''} (${poIds.length})</p>
+          <div style="margin-bottom:16px; display:flex; gap:6px; flex-wrap:wrap;">${poIds.map(pid => `<button class="button button-small button-accent" onclick="openPoView('${pid}')">View PO</button>`).join('')}</div>`;
+      }
 
       body.innerHTML = `
         <div class="enq-v2-grid">
@@ -8195,13 +8468,14 @@ const renderSalesPage = async () => {
           <div class="enq-v2-info-box"><span class="enq-v2-info-label">Current Value</span><div class="enq-v2-info-value">${e.quoted_price ? formatCurrency(e.quoted_price) : 'N/A'}</div></div>
         </div>
         ${quoteSummaryHtml}
+        ${poInfoHtml}
         <p class="enq-v2-section-title">Timeline & Notes</p>
         <div class="enq-v2-notes-box">${e.notes ? escapeHtml(e.notes) : 'No notes available.'}</div>
         <div style="font-size:0.8rem; color:var(--text-soft);">Created: ${new Date(e.created_at).toLocaleString()}</div>
       `;
 
       let actions = [];
-      if (e.status === 'new') actions.push(`<button class="button button-primary" onclick="handleEnqAction('${e.id}', 'quote')">Send Quote</button>`);
+      if (e.status === 'new') actions.push(`<button class="button button-primary" onclick="handleEnqAction('${e.id}', 'quote')">Prepare Quote</button>`);
       if (e.status === 'quoted') {
         actions.push(`<button class="button button-secondary" onclick="handleEnqAction('${e.id}', 'quote')">Edit Quote</button>`);
         actions.push(`<button class="button button-primary" onclick="handleEnqAction('${e.id}', 'confirm')">Confirm Order</button>`);
@@ -8307,25 +8581,77 @@ const renderSalesPage = async () => {
         document.body.appendChild(modal);
       }
 
-      const options = enquiry.quote_options ? (() => { try { return JSON.parse(enquiry.quote_options); } catch { return []; } })() : [];
-      const defaultOpt = options[0] || {};
+      const rawOptions = enquiry.quote_options ? (() => { try { return JSON.parse(enquiry.quote_options); } catch { return []; } })() : [];
+      const lines = rawOptions.length
+        ? rawOptions.map(o => ({
+            name: String(o.name || o.product || '').trim(),
+            source: o.source || (o.sqId || o.supplierId ? 'procurement' : 'inventory'),
+            legacy: (o.source == null || o.source === '') && !o.sqId,
+            supplierId: o.supplierId || null,
+            sqNumber: o.sqNumber || null,
+            costPrice: Number(o.costPrice) || 0,
+            quotedPrice: Number(o.quotedPrice) || 0,
+            quantity: Number(o.quantity) || 1
+          }))
+        : [{
+            name: enquiry.product_interest || "Product",
+            source: enquiry.supplier_id ? 'procurement' : 'inventory',
+            supplierId: enquiry.supplier_id || null,
+            sqNumber: null,
+            costPrice: Number(enquiry.cost_price) || 0,
+            quotedPrice: Number(enquiry.quoted_price) || 0,
+            quantity: Number(enquiry.quantity) || 1
+          }];
+
+      const costTotal = lines.reduce((s, l) => s + l.costPrice, 0);
+      const quoteTotal = lines.reduce((s, l) => s + l.quotedPrice, 0);
+      const procLines = lines.filter(l => l.source === 'procurement');
+      const supplierCount = new Set(procLines.map(l => l.supplierId).filter(Boolean)).size;
+      const pendingProc = procLines.filter(l => !l.legacy && !l.sqNumber && !(Number(l.costPrice) > 0));
       const today = new Date().toISOString().slice(0, 10);
 
-      modal.innerHTML = `
-        <div class="modal-content" style="max-width:520px;">
-          <button type="button" class="modal-close" id="eqc-close">&times;</button>
-          <h3 style="margin:0 0 4px;">Confirm + Create PO</h3>
-          <p style="margin:0 0 16px; color:var(--muted); font-size:13px;">
-            A Purchase Order will be created for <strong>${escapeHtml(enquiry.customer_name)}</strong>
-            ${defaultOpt.product ? ` — <strong>${escapeHtml(defaultOpt.product)}</strong>` : ''}
-            (qty ${defaultOpt.quantity || enquiry.quantity || 1}).
-          </p>
+      const poPlanText = !procLines.length
+        ? `<span style="color:var(--success);">All items are from stock — no purchase orders needed.</span>`
+        : `${procLines.length} ordered line(s) from ${supplierCount} supplier(s). ${procLines.length === 1 ? 'A purchase order' : 'One purchase order per supplier'} will be created on confirm.`;
 
-          <div style="background:var(--surface-2); border-radius:8px; padding:12px; margin-bottom:16px; font-size:13px;">
-            <div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span style="color:var(--text-3);">Supplier Cost</span><strong>${formatCurrency(defaultOpt.costPrice || enquiry.cost_price || 0)}</strong></div>
-            <div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span style="color:var(--text-3);">Quoted Price</span><strong>${formatCurrency(defaultOpt.quotedPrice || enquiry.quoted_price || 0)}</strong></div>
-            <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-3);">Estimated margin</span><strong>${formatCurrency(((defaultOpt.quotedPrice || enquiry.quoted_price || 0)) - ((defaultOpt.costPrice || enquiry.cost_price || 0)))}</strong></div>
+      modal.innerHTML = `
+        <div class="modal-content" style="max-width:560px;">
+          <button type="button" class="modal-close" id="eqc-close">&times;</button>
+          <h3 style="margin:0 0 4px;">Confirm Order</h3>
+          <p style="margin:0 0 14px; color:var(--muted); font-size:13px;">Confirm the quoted items for <strong>${escapeHtml(enquiry.customer_name)}</strong>.</p>
+
+          <div style="background:var(--surface-2); border-radius:8px; padding:10px 12px; margin-bottom:14px; font-size:12px; color:var(--text-3);">${poPlanText}</div>
+
+          <div style="border:1px solid var(--border); border-radius:8px; overflow:hidden; margin-bottom:14px;">
+            <table style="width:100%; font-size:12px; border-collapse:collapse;">
+              <thead><tr style="background:var(--surface-2); text-align:left; color:var(--text-3);">
+                <th style="padding:8px;">Item</th><th style="padding:8px;">Qty</th><th style="padding:8px;">Cost</th><th style="padding:8px;">Quote</th>
+              </tr></thead>
+              <tbody>${lines.map(l => `
+                <tr style="border-top:1px solid var(--border);">
+                  <td style="padding:8px;">
+                    <div>${escapeHtml(l.name)}</div>
+                    <div style="margin-top:3px;">
+                      ${l.source === 'procurement'
+                        ? (l.legacy ? `<span class="chip info" style="font-size:9px;">Supplier order</span>` : `<span class="chip warning" style="font-size:9px;">${l.sqNumber ? escapeHtml(l.sqNumber) : (Number(l.costPrice) > 0 ? 'Cost entered' : 'SQ not requested')}</span>`)
+                        : '<span class="chip success" style="font-size:9px;">From Stock</span>'}
+                    </div>
+                  </td>
+                  <td style="padding:8px;">${l.quantity}</td>
+                  <td style="padding:8px;">${formatCurrency(l.costPrice)}</td>
+                  <td style="padding:8px;"><strong>${formatCurrency(l.quotedPrice)}</strong></td>
+                </tr>`).join('')}
+              </tbody>
+              <tfoot style="border-top:1px solid var(--border);">
+                <tr><td style="padding:8px;"><strong>Total</strong></td><td></td>
+                  <td style="padding:8px;"><strong>${formatCurrency(costTotal)}</strong></td>
+                  <td style="padding:8px;"><strong>${formatCurrency(quoteTotal)}</strong></td></tr>
+                <tr><td style="padding:8px;" colspan="4">Estimated margin: <strong>${formatCurrency(quoteTotal - costTotal)}</strong></td></tr>
+              </tfoot>
+            </table>
           </div>
+
+          ${pendingProc.length ? `<p style="font-size:12px; color:var(--danger); margin:0 0 10px;">Needs action: ${pendingProc.map(l => escapeHtml(l.name)).join(', ')} — enter a supplier cost or approve an SQ before the order can be confirmed.</p>` : ''}
 
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:8px;">
             <label style="margin:0; font-size:13px;">Advance paid to supplier (Rs.)
@@ -8346,7 +8672,7 @@ const renderSalesPage = async () => {
           <p style="font-size:12px; color:var(--text-3); margin:8px 0 14px;">Enter 0 if no advance was paid. The advance is recorded on the enquiry and auto-applied when the PO is received.</p>
 
           <div style="display:flex; gap:10px; align-items:center;">
-            <button class="button button-primary" type="button" id="eqc-confirm-btn">Confirm & Create PO</button>
+            <button class="button button-primary" type="button" id="eqc-confirm-btn">Confirm Order</button>
             <button class="button button-secondary" type="button" id="eqc-cancel-btn">Cancel</button>
             <p id="eqc-status" class="inline-status"></p>
           </div>
@@ -8371,7 +8697,81 @@ const renderSalesPage = async () => {
       modal.style.display = "flex";
     };
 
-    const openEnquiryQuoteModal = (enquiry) => {
+    let eqLines = [];
+    let eqSuppliers = [];
+    let eqProducts = [];
+    let eqSqStatus = {};
+
+    const eqProductByName = (name) => {
+      const n = String(name || "").trim().toLowerCase();
+      return eqProducts.find(p => p && String(p.name || "").trim().toLowerCase() === n) || null;
+    };
+
+    const eqSupplierAreaHtml = (line) => `
+      <div style="margin-bottom:8px;">
+        <label style="margin:0; font-size:12px; display:block;">Supplier
+          <select class="eq-line-supplier" style="width:100%; margin-top:2px;">
+            <option value="">-- Select --</option>
+            ${eqSuppliers.map(s => `<option value="${s.id}" ${s.id === line.supplierId ? 'selected' : ''}>${escapeHtml(s.name)}</option>`).join("")}
+          </select>
+        </label>
+      </div>`;
+
+    const eqSqAreaHtml = (line) => {
+      let inner;
+      if (!line.sqId) {
+        inner = `
+          <button type="button" class="button button-small button-secondary eq-line-request-sq">Request Supplier Quote</button>
+          <span style="font-size:11px; color:var(--muted);">Optional — request a formal quote, or just type the supplier cost on the line after you get a verbal price.</span>`;
+      } else {
+        const st = eqSqStatus[line.sqId];
+        const cls = st === 'approved' ? 'success' : (st === 'rejected' ? 'danger' : 'warning');
+        const label = st === 'approved' ? 'Approved' : (st === 'rejected' ? 'Rejected' : 'Pending');
+        inner = `
+          <span class="chip ${cls}" style="font-size:11px;">${escapeHtml(line.sqNumber || line.sqId)} — ${label}</span>
+          ${st !== 'approved' ? `<button type="button" class="button button-small button-secondary eq-line-request-sq">Update SQ</button>` : ''}
+          <span style="font-size:11px; color:var(--muted);">PO for this line is placed when the customer confirms.</span>`;
+      }
+      return `<div class="eq-line-sq-area" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">${inner}</div>`;
+    };
+
+    const eqLineRowHtml = (line, i) => {
+      const isStock = line.source !== 'procurement';
+      return `
+        <div class="eq-line-row" data-idx="${i}" data-unit="0" style="border:1px solid var(--border); border-radius:8px; padding:10px; margin-bottom:8px; background:var(--card-bg);">
+          <div style="display:grid; grid-template-columns:1fr 160px; gap:8px; align-items:end; margin-bottom:8px;">
+            <label style="margin:0; font-size:12px;">Product
+              <input type="text" class="eq-line-product" value="${escapeHtml(line.name || '')}" list="eq-products-datalist" placeholder="Type product name or item description..." style="width:100%; margin-top:2px;" />
+            </label>
+            <label style="margin:0; font-size:12px;">Source
+              <select class="eq-line-source" style="width:100%; margin-top:2px;">
+                <option value="inventory" ${isStock ? 'selected' : ''}>From Stock</option>
+                <option value="procurement" ${!isStock ? 'selected' : ''}>Buy from Supplier</option>
+              </select>
+            </label>
+          </div>
+          <div class="eq-line-procure-part" ${isStock ? 'style="display:none;"' : 'style="display:block; margin-bottom:8px;"'}>
+            ${isStock ? '' : eqSupplierAreaHtml(line) + eqSqAreaHtml(line) + (Number(line.costPrice) > 0 ? '' : '<div style="margin-bottom:6px;"><span class="eq-cost-pending-chip" style="display:inline-block; padding:2px 8px; border-radius:6px; font-size:11px; font-weight:bold; background:var(--warning-bg, #fef3c7); color:var(--warning, #d97706); border:1px solid var(--warning-border, #fcd34d);">Cost pending — enter supplier cost after the quote</span></div>')}
+          </div>
+          <div class="eq-line-stock-part" ${isStock ? 'style="display:block; margin-bottom:8px;"' : 'style="display:none;"'}>
+            ${isStock ? '<span style="font-size:11px; color:var(--muted);">Fulfilled from inventory at delivery — no purchase order needed.</span>' : ''}
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr 70px auto; gap:8px; align-items:end;">
+            <label style="margin:0; font-size:12px;">${isStock ? 'Cost (line total)' : 'Supplier cost (line total)'}
+              <input type="number" class="eq-line-cost" data-clean="1" value="${line.costPrice || ''}" min="0" step="1" style="width:100%; margin-top:2px;" />
+            </label>
+            <label style="margin:0; font-size:12px;">Quote (Rs.)
+              <input type="number" class="eq-line-quote" value="${line.quotedPrice || ''}" min="0" step="1" style="width:100%; margin-top:2px;" />
+            </label>
+            <label style="margin:0; font-size:12px;">Qty
+              <input type="number" class="eq-line-qty" value="${line.quantity || 1}" min="1" step="1" style="width:70px; margin-top:2px;" />
+            </label>
+            <button type="button" class="button button-small button-secondary eq-line-remove" data-idx="${i}" style="padding-top:8px;" title="Remove">&times;</button>
+          </div>
+        </div>`;
+    };
+
+    const openEnquiryQuoteModal = async (enquiry) => {
       let modal = document.getElementById("enquiry-quote-modal");
       if (!modal) {
         modal = document.createElement("div");
@@ -8380,111 +8780,219 @@ const renderSalesPage = async () => {
         document.body.appendChild(modal);
       }
 
-      const existingOptions = enquiry.quote_options ? (() => { try { return JSON.parse(enquiry.quote_options); } catch { return []; } })() : [];
+      const existingOptions = enquiry.quote_options ? (() => { try { return (JSON.parse(enquiry.quote_options) || []).map(o => ({
+        productId: o.productId || null,
+        name: String(o.name || o.product || '').trim(),
+        source: o.source || (o.sqId || o.supplierId ? 'procurement' : 'inventory'),
+        supplierId: o.supplierId || '',
+        supplierName: o.supplierName || '',
+        costPrice: Number(o.costPrice) || 0,
+        quotedPrice: Number(o.quotedPrice) || 0,
+        quantity: Number(o.quantity) || 1,
+        sqId: o.sqId || null,
+        sqNumber: o.sqNumber || null,
+        poId: o.poId || null,
+        costSource: o.sqId ? 'sq' : 'manual'
+      })); } catch { return []; } })() : [];
 
       modal.innerHTML = `
-        <div class="modal-content" style="max-width:700px;">
-          <button type="button" class="modal-close" onclick="document.getElementById('enquiry-quote-modal').style.display='none'">&times;</button>
-          <h3 style="margin:0 0 4px;">Quote Options — ${escapeHtml(enquiry.customer_name)}</h3>
-          <p style="margin:0 0 16px; color:var(--muted); font-size:13px;">Add multiple supplier options below. First option is the recommended default.</p>
-          <div id="eq-options-list" style="margin-bottom:14px;"></div>
-          <button type="button" class="button button-small button-secondary" id="eq-add-option-btn" style="margin-bottom:18px;">+ Add Option</button>
+        <div class="modal-content" style="max-width:780px;">
+          <button type="button" class="modal-close" id="eq-close">&times;</button>
+          <h3 style="margin:0 0 4px;">Customer Quote — ${escapeHtml(enquiry.customer_name)}</h3>
+          <p style="margin:0 0 16px; color:var(--muted); font-size:13px;">
+            Add the items you want to quote. <strong>From Stock</strong> lines are fulfilled from inventory. <strong>Buy from Supplier</strong> lines need a supplier and a cost — you can type the cost straight in after a verbal quote, or (optionally) create a formal supplier quote (SQ) and approve it. Either way the purchase order is placed automatically when the customer confirms.
+          </p>
+          <datalist id="eq-products-datalist"></datalist>
+          <div id="eq-lines-list" style="margin-bottom:14px;"></div>
+          <button type="button" class="button button-small button-secondary" id="eq-add-line-btn" style="margin-bottom:18px;">+ Add Line</button>
+          <div id="eq-total-display" style="margin-bottom:12px; font-weight:bold;"></div>
           <label class="full-width" style="margin-bottom:12px;">Notes<textarea id="eq-notes" style="min-height:40px;" placeholder="Any notes for the customer...">${escapeHtml(enquiry.notes || '')}</textarea></label>
           <div style="display:flex; gap:10px; align-items:center;">
-            <button class="button button-primary" type="button" id="eq-save-btn">Save Options</button>
-            <button class="button button-secondary" type="button" onclick="document.getElementById('enquiry-quote-modal').style.display='none'">Cancel</button>
+            <button class="button button-primary" type="button" id="eq-save-btn">Save Quote</button>
+            <button class="button button-secondary" type="button" id="eq-cancel-btn">Cancel</button>
             <p id="eq-modal-status" class="inline-status"></p>
           </div>
         </div>`;
 
-      let suppliersList = [];
-      api("/api/sales/suppliers").then(res => { suppliersList = res.suppliers || []; });
+      const container = modal.querySelector("#eq-lines-list");
+      const statusEl = modal.querySelector("#eq-modal-status");
 
-      const renderOptions = (opts) => {
-        const container = modal.querySelector("#eq-options-list");
-        if (!opts.length) {
-          container.innerHTML = '<p style="color:var(--muted); font-size:13px;">No options added yet. Click "+ Add Option" to add supplier quotes.</p>';
+      eqLines = existingOptions.length ? existingOptions.map(o => ({ ...o })) : [];
+
+      const [supRes, prodRes, sqRes] = await Promise.all([
+        api("/api/sales/suppliers"),
+        api("/api/public/products"),
+        api("/api/sales/quotes")
+      ]);
+      eqSuppliers = supRes.suppliers || [];
+      eqProducts = prodRes.products || [];
+      eqSqStatus = {};
+      (sqRes.quotes || []).forEach(q => { eqSqStatus[q.id] = q.status; });
+      const prodDl = modal.querySelector("#eq-products-datalist");
+      if (prodDl) prodDl.innerHTML = eqProducts.map(p => `<option value="${escapeHtml(p.name)}">${escapeHtml(p.type)}${p.last_cost ? ' — cost ' + formatCurrency(p.last_cost) : ''}</option>`).join('');
+
+      const renderAll = () => {
+        container.innerHTML = eqLines.length
+          ? eqLines.map((l, i) => eqLineRowHtml(l, i)).join('')
+          : '<p style="color:var(--muted); font-size:13px;">No lines yet. Click "+ Add Line" to start quoting.</p>';
+        updateTotal();
+      };
+
+      const updateTotal = () => {
+        const el = modal.querySelector("#eq-total-display");
+        if (!el) return;
+        const total = eqLines.reduce((s, l) => s + (Number(l.quotedPrice) || 0), 0);
+        el.textContent = `Total quote: ${formatCurrency(total)}`;
+      };
+
+      const syncLineFromRow = (row, i) => {
+        const line = eqLines[i];
+        if (!line) return;
+        const name = String(row.querySelector(".eq-line-product").value || "").trim();
+        const prod = eqProductByName(name);
+        line.productId = prod ? prod.id : line.productId;
+        line.name = name;
+        line.source = row.querySelector(".eq-line-source").value || 'inventory';
+        if (line.source === 'procurement') {
+          const supSel = row.querySelector(".eq-line-supplier");
+          if (supSel) line.supplierId = supSel.value || '';
+        }
+        line.costPrice = Number(row.querySelector(".eq-line-cost").value) || 0;
+        line.quotedPrice = Number(row.querySelector(".eq-line-quote").value) || 0;
+        line.quantity = Math.max(1, Number(row.querySelector(".eq-line-qty").value) || 1);
+      };
+
+      renderAll();
+
+      modal.querySelector("#eq-close").onclick = () => { modal.style.display = "none"; };
+      modal.querySelector("#eq-cancel-btn").onclick = () => { modal.style.display = "none"; };
+
+      modal.querySelector("#eq-add-line-btn").onclick = () => {
+        eqLines.push({ productId: null, name: enquiry.product_interest || '', source: 'inventory', supplierId: '', supplierName: '', costPrice: 0, quotedPrice: 0, quantity: 1, sqId: null, sqNumber: null, poId: null, costSource: 'manual' });
+        renderAll();
+      };
+
+      container.addEventListener("input", (ev) => {
+        const row = ev.target.closest(".eq-line-row");
+        if (!row) return;
+        const i = Number(row.dataset.idx);
+        const line = eqLines[i];
+        if (!line) return;
+        const cost = row.querySelector(".eq-line-cost");
+        if (ev.target.classList.contains("eq-line-product")) {
+          const prod = eqProductByName(ev.target.value);
+          row.dataset.unit = prod ? (Number(prod.last_cost) || 0) : 0;
+          if (prod) {
+            const qty = Math.max(1, Number(row.querySelector(".eq-line-qty").value) || 1);
+            if (cost.dataset.clean === "1") cost.value = Math.round((Number(prod.last_cost) || 0) * qty);
+          }
+          line.productId = prod ? prod.id : null;
+          line.name = String(ev.target.value || "").trim();
+        }
+        if (ev.target.classList.contains("eq-line-cost")) {
+          cost.dataset.clean = "0";
+          const chip = row.querySelector(".eq-cost-pending-chip");
+          if (chip) chip.style.display = (Number(cost.value) || 0) > 0 ? "none" : "";
+        }
+        if (ev.target.classList.contains("eq-line-qty")) {
+          const unit = Number(row.dataset.unit) || 0;
+          if (unit > 0 && cost.dataset.clean === "1") {
+            cost.value = Math.round(unit * (Math.max(1, Number(ev.target.value) || 1)));
+          }
+        }
+        line.costPrice = Number(cost.value) || 0;
+        line.quotedPrice = Number(row.querySelector(".eq-line-quote").value) || 0;
+        line.quantity = Math.max(1, Number(row.querySelector(".eq-line-qty").value) || 1);
+        updateTotal();
+      });
+
+      container.addEventListener("change", (ev) => {
+        const row = ev.target.closest(".eq-line-row");
+        if (!row) return;
+        const i = Number(row.dataset.idx);
+        const line = eqLines[i];
+        if (!line) return;
+        if (ev.target.classList.contains("eq-line-source")) {
+          line.source = ev.target.value;
+          const stockPart = row.querySelector(".eq-line-stock-part");
+          const procPart = row.querySelector(".eq-line-procure-part");
+          if (line.source === 'procurement') {
+            stockPart.style.display = "none";
+            procPart.style.display = "block";
+            procPart.innerHTML = eqSupplierAreaHtml(line) + eqSqAreaHtml(line);
+          } else {
+            procPart.style.display = "none";
+            stockPart.style.display = "block";
+            if (line.sqId) { line.sqId = null; line.sqNumber = null; }
+          }
+        }
+        if (ev.target.classList.contains("eq-line-supplier")) {
+          const oldSupp = line.supplierId;
+          line.supplierId = ev.target.value || '';
+          if (oldSupp !== line.supplierId && line.sqId) {
+            line.sqId = null;
+            line.sqNumber = null;
+            const sqArea = row.querySelector(".eq-line-sq-area");
+            if (sqArea) sqArea.innerHTML = eqSqAreaHtml(line);
+          }
+        }
+      });
+
+      container.addEventListener("click", async (ev) => {
+        const removeBtn = ev.target.closest(".eq-line-remove");
+        const reqBtn = ev.target.closest(".eq-line-request-sq");
+        if (removeBtn) {
+          const i = Number(removeBtn.dataset.idx);
+          eqLines.splice(i, 1);
+          renderAll();
           return;
         }
-        container.innerHTML = opts.map((o, i) => `
-          <div class="eq-option-row" style="display:grid; grid-template-columns:1fr 1fr auto auto auto auto; gap:8px; align-items:end; padding:10px; border:1px solid var(--border); border-radius:8px; margin-bottom:8px; background:var(--card-bg);">
-            <label style="margin:0; font-size:12px;">Product
-              <input type="text" class="eq-opt-product" value="${escapeHtml(o.product || enquiry.product_interest || '')}" style="width:100%; margin-top:2px;" />
-            </label>
-            <label style="margin:0; font-size:12px;">Supplier
-              <select class="eq-opt-supplier" style="width:100%; margin-top:2px;">
-                <option value="">-- Select --</option>
-                ${suppliersList.map(s => `<option value="${s.id}" ${s.id === o.supplierId ? 'selected' : ''}>${escapeHtml(s.name)}</option>`).join("")}
-              </select>
-            </label>
-            <label style="margin:0; font-size:12px;">Cost (Rs.)
-              <input type="number" class="eq-opt-cost" value="${o.costPrice || ''}" min="0" style="width:90px; margin-top:2px;" />
-            </label>
-            <label style="margin:0; font-size:12px;">Quote (Rs.)
-              <input type="number" class="eq-opt-quote" value="${o.quotedPrice || ''}" min="0" style="width:90px; margin-top:2px;" />
-            </label>
-            <label style="margin:0; font-size:12px;">Qty
-              <input type="number" class="eq-opt-qty" value="${o.quantity || 1}" min="1" style="width:60px; margin-top:2px;" />
-            </label>
-            <div style="display:flex; gap:4px; padding-top:14px;">
-              ${i === 0 ? '<span class="chip success" style="font-size:10px; cursor:default;">Default</span>' : `<button type="button" class="button button-small eq-set-default" data-idx="${i}" title="Set as default">Set</button>`}
-              <button type="button" class="button button-small button-secondary eq-remove-opt" data-idx="${i}" title="Remove">&times;</button>
-            </div>
-          </div>
-        `).join("");
-      };
-
-      let options = existingOptions.length ? [...existingOptions] : [];
-      renderOptions(options);
-
-      modal.querySelector("#eq-add-option-btn").onclick = () => {
-        options.push({ product: enquiry.product_interest || "", supplierId: "", costPrice: 0, quotedPrice: 0, quantity: 1 });
-        renderOptions(options);
-      };
-
-      modal.querySelector("#eq-options-list").onclick = (ev) => {
-        const removeBtn = ev.target.closest(".eq-remove-opt");
-        const setBtn = ev.target.closest(".eq-set-default");
-        if (removeBtn) {
-          options.splice(Number(removeBtn.dataset.idx), 1);
-          renderOptions(options);
+        if (reqBtn) {
+          const row = reqBtn.closest(".eq-line-row");
+          const i = Number(row.dataset.idx);
+          const line = eqLines[i];
+          if (!line) return;
+          const name = String(row.querySelector(".eq-line-product").value || "").trim();
+          const qty = Math.max(1, Number(row.querySelector(".eq-line-qty").value) || 1);
+          if (!name) { alert("Enter a product name before requesting a quote."); return; }
+          if (!line.supplierId) { alert("Select a supplier for this line first."); return; }
+          const prod = eqProductByName(name);
+          line.source = 'procurement';
+          await openSqModal({
+            enquiryId: enquiry.id,
+            supplierId: line.supplierId,
+            items: [{ productId: prod ? prod.id : null, productName: name, quantity: qty, unitCost: 0 }],
+            onCreate: (sq) => {
+              line.sqId = sq.id;
+              line.sqNumber = sq.quoteNumber;
+              eqSqStatus[sq.id] = 'pending';
+              const sqArea = row.querySelector(".eq-line-sq-area");
+              if (sqArea) sqArea.innerHTML = eqSqAreaHtml(line);
+              toast(`Supplier quote ${sq.quoteNumber} requested`, "success");
+            }
+          });
         }
-        if (setBtn) {
-          const idx = Number(setBtn.dataset.idx);
-          const [picked] = options.splice(idx, 1);
-          options.unshift(picked);
-          renderOptions(options);
-        }
-      };
+      });
 
       modal.querySelector("#eq-save-btn").onclick = async () => {
-        const statusEl = modal.querySelector("#eq-modal-status");
         statusEl.textContent = "Saving...";
-
-        // Collect from DOM
-        const rows = modal.querySelectorAll(".eq-option-row");
-        options = [];
-        rows.forEach((row) => {
-          options.push({
-            product: row.querySelector(".eq-opt-product").value || "",
-            supplierId: row.querySelector(".eq-opt-supplier").value || "",
-            costPrice: Number(row.querySelector(".eq-opt-cost").value) || 0,
-            quotedPrice: Number(row.querySelector(".eq-opt-quote").value) || 0,
-            quantity: Number(row.querySelector(".eq-opt-qty").value) || 1
-          });
+        modal.querySelectorAll(".eq-line-row").forEach((row) => {
+          const i = Number(row.dataset.idx);
+          if (eqLines[i]) syncLineFromRow(row, i);
         });
 
-        if (!options.length) {
-          statusEl.textContent = "Add at least one option";
-          statusEl.style.color = "";
-          return;
+        if (!eqLines.length) { statusEl.textContent = "Add at least one line."; statusEl.style.color = ""; return; }
+        for (const l of eqLines) {
+          if (!l.name) { statusEl.textContent = "Every line needs a product name."; statusEl.style.color = ""; return; }
+          if (!(Number(l.quotedPrice) > 0)) { statusEl.textContent = `Enter a quoted price for ${l.name}.`; statusEl.style.color = ""; return; }
         }
 
         try {
           await api(`/api/sales/enquiries/${enquiry.id}/quote`, {
             method: "POST",
             body: JSON.stringify({
-              quoteOptions: options,
+              status: enquiry.status === 'new' ? 'quoted' : undefined,
+              quoteOptions: eqLines.map(l => ({ ...l, costSource: l.sqId ? 'sq' : 'manual' })),
               notes: modal.querySelector("#eq-notes").value || undefined
             })
           });
@@ -8541,11 +9049,67 @@ const renderSalesPage = async () => {
     // Service Type Chip Selection Logic
     const typeChips = document.querySelectorAll("#service-type-chips .type-chip");
     const typeInput = serviceCreateForm?.querySelector('input[name="device_type"]');
+    const deviceIntakeSection = document.getElementById("device-intake-section");
     typeChips.forEach(chip => {
       chip.addEventListener("click", () => {
         typeChips.forEach(c => c.classList.remove("active"));
         chip.classList.add("active");
         if (typeInput) typeInput.value = chip.dataset.val;
+        if (deviceIntakeSection) {
+          deviceIntakeSection.style.display = chip.dataset.val === "Device Service" ? "" : "none";
+        }
+      });
+    });
+
+    // Device Intake Sub-type Chips
+    const subtypeChips = document.querySelectorAll("#device-subtype-chips .type-chip");
+    const subtypeInput = serviceCreateForm?.querySelector('input[name="device_subtype"]');
+    const laptopFields = document.getElementById("intake-laptop-fields");
+    const printerFields = document.getElementById("intake-printer-fields");
+    const laptopAcc = document.getElementById("intake-accessories-laptop");
+    const printerAcc = document.getElementById("intake-accessories-printer");
+    const laptopPasswords = document.getElementById("intake-passwords-laptop");
+    const printerPasswords = document.getElementById("intake-passwords-printer");
+    const brandSelect = document.getElementById("intake-brand-select");
+    const brandOther = document.getElementById("intake-brand-other");
+
+    subtypeChips.forEach(chip => {
+      chip.addEventListener("click", () => {
+        subtypeChips.forEach(c => c.classList.remove("active"));
+        chip.classList.add("active");
+        if (subtypeInput) subtypeInput.value = chip.dataset.val;
+        const isPrinter = chip.dataset.val === "printer";
+        if (laptopFields) laptopFields.style.display = isPrinter ? "none" : "";
+        if (printerFields) printerFields.style.display = isPrinter ? "" : "none";
+        if (laptopAcc) laptopAcc.style.display = isPrinter ? "none" : "flex";
+        if (printerAcc) printerAcc.style.display = isPrinter ? "flex" : "none";
+        if (laptopPasswords) laptopPasswords.style.display = isPrinter ? "none" : "grid";
+        if (printerPasswords) printerPasswords.style.display = isPrinter ? "grid" : "none";
+      });
+    });
+
+    // Brand "Other" toggle
+    if (brandSelect) {
+      brandSelect.addEventListener("change", () => {
+        if (brandOther) brandOther.style.display = brandSelect.value === "Other" ? "" : "none";
+      });
+    }
+
+    // Condition chip click handlers (generic for all intake fields)
+    document.querySelectorAll("#device-intake-section .chip-btn[data-field]").forEach(chip => {
+      chip.addEventListener("click", () => {
+        const field = chip.dataset.field;
+        const hiddenInput = document.querySelector(`#device-intake-section input[name="${field}"]`);
+        if (hiddenInput) {
+          const wasActive = chip.classList.contains("active");
+          document.querySelectorAll(`#device-intake-section .chip-btn[data-field="${field}"]`).forEach(c => c.classList.remove("active"));
+          if (!wasActive) {
+            chip.classList.add("active");
+            hiddenInput.value = chip.dataset.val;
+          } else {
+            hiddenInput.value = "";
+          }
+        }
       });
     });
 
@@ -8730,6 +9294,45 @@ const renderSalesPage = async () => {
       const form = e.target;
       const status = document.getElementById("service-status");
       const techSelected = form.technician_id.options[form.technician_id.selectedIndex];
+
+      let deviceIntake = null;
+      if (form.device_type.value === "Device Service" && deviceIntakeSection && deviceIntakeSection.style.display !== "none") {
+        const subType = form.device_subtype ? form.device_subtype.value : "laptop";
+        const brand = form.intake_brand.value === "Other" ? (form.intake_brand_other.value || "Other") : form.intake_brand.value;
+        const accessories = [];
+        document.querySelectorAll("#device-intake-section input[type='checkbox']:checked").forEach(cb => {
+          if (cb.name === "intake_acc_other_cb" && form.intake_acc_other && form.intake_acc_other.value) {
+            accessories.push(form.intake_acc_other.value);
+          } else if (cb.name !== "intake_acc_other_cb") {
+            accessories.push(cb.value);
+          }
+        });
+        deviceIntake = {
+          subType,
+          brand,
+          model: form.intake_model.value,
+          serialNumber: form.intake_serial.value,
+          color: form.intake_color.value,
+          bodyCondition: form.intake_body.value,
+          powerOn: form.intake_power.value,
+          accessories,
+          accessoriesOther: form.intake_acc_other ? form.intake_acc_other.value : "",
+          preExistingDamage: form.intake_damage.value,
+        };
+        if (subType === "laptop") {
+          deviceIntake.screenCondition = form.intake_screen.value;
+          deviceIntake.keyboardCondition = form.intake_keyboard.value;
+          deviceIntake.portsCheck = form.intake_ports.value;
+          deviceIntake.biosPassword = form.intake_bios_password.value;
+          deviceIntake.loginPassword = form.intake_login_password.value;
+        } else {
+          deviceIntake.paperTray = form.intake_paper_tray.value;
+          deviceIntake.printHead = form.intake_print_head.value;
+          deviceIntake.inkToner = form.intake_ink_toner.value;
+          deviceIntake.networkPassword = form.intake_network_password.value;
+        }
+      }
+
       try {
         await api("/api/sales/service-requests", {
           method: "POST",
@@ -8742,6 +9345,7 @@ const renderSalesPage = async () => {
             created_at: form.created_at ? form.created_at.value : undefined,
             technicianId: form.technician_id.value || null,
             technicianName: form.technician_id.value ? techSelected.textContent : null,
+            device_intake: deviceIntake,
           }),
         });
         status.textContent = "Service request created";
@@ -9521,6 +10125,50 @@ const renderSalesPage = async () => {
           const { request } = await api(`/api/sales/service-requests/${requestId}`);
           openDcModal("service", requestId, request.customer_name);
         } catch (err) { toast(err.message, "error"); }
+        return;
+      }
+
+      const viewIntakeBtn = e.target.closest("[data-view-intake]");
+      if (viewIntakeBtn) {
+        try {
+          const intake = JSON.parse(viewIntakeBtn.dataset.viewIntake);
+          const isLaptop = intake.subType !== "printer";
+          const rows = [];
+          rows.push(`<div style="font-weight:700; font-size:16px; margin-bottom:8px;">${escapeHtml(intake.brand || '')} ${escapeHtml(intake.model || '')} <span style="color:var(--text-soft); font-weight:400; font-size:13px;">(${isLaptop ? 'Laptop / PC' : 'Printer'})</span></div>`);
+          if (intake.serialNumber) rows.push(`<div><strong>Serial #:</strong> ${escapeHtml(intake.serialNumber)}</div>`);
+          if (intake.color) rows.push(`<div><strong>Color:</strong> ${escapeHtml(intake.color)}</div>`);
+          rows.push('<div style="border-top:1px dashed var(--border); margin:8px 0;"></div>');
+          if (intake.bodyCondition) rows.push(`<div><strong>Body:</strong> ${escapeHtml(intake.bodyCondition)}</div>`);
+          if (isLaptop) {
+            if (intake.screenCondition) rows.push(`<div><strong>Screen:</strong> ${escapeHtml(intake.screenCondition)}</div>`);
+            if (intake.keyboardCondition) rows.push(`<div><strong>Keyboard:</strong> ${escapeHtml(intake.keyboardCondition)}</div>`);
+            if (intake.portsCheck) rows.push(`<div><strong>Ports:</strong> ${escapeHtml(intake.portsCheck)}</div>`);
+          } else {
+            if (intake.paperTray) rows.push(`<div><strong>Paper Tray:</strong> ${escapeHtml(intake.paperTray)}</div>`);
+            if (intake.printHead) rows.push(`<div><strong>Print Head:</strong> ${escapeHtml(intake.printHead)}</div>`);
+            if (intake.inkToner) rows.push(`<div><strong>Ink / Toner:</strong> ${escapeHtml(intake.inkToner)}</div>`);
+          }
+          if (intake.powerOn) rows.push(`<div><strong>Power On:</strong> ${escapeHtml(intake.powerOn)}</div>`);
+          if (intake.accessories && intake.accessories.length) {
+            rows.push(`<div style="border-top:1px dashed var(--border); margin:8px 0;"></div>`);
+            rows.push(`<div><strong>Accessories:</strong> ${intake.accessories.map(a => escapeHtml(a)).join(', ')}</div>`);
+          }
+          if (isLaptop && (intake.biosPassword || intake.loginPassword)) {
+            rows.push('<div style="border-top:1px dashed var(--border); margin:8px 0;"></div>');
+            if (intake.biosPassword) rows.push(`<div><strong>BIOS Password:</strong> ••••••••</div>`);
+            if (intake.loginPassword) rows.push(`<div><strong>Windows Password:</strong> ••••••••</div>`);
+          }
+          if (!isLaptop && intake.networkPassword) {
+            rows.push('<div style="border-top:1px dashed var(--border); margin:8px 0;"></div>');
+            rows.push(`<div><strong>Network Password:</strong> ••••••••</div>`);
+          }
+          if (intake.preExistingDamage) {
+            rows.push('<div style="border-top:1px dashed var(--border); margin:8px 0;"></div>');
+            rows.push(`<div style="background:#fff8e1; padding:8px 10px; border-radius:6px; border-left:3px solid #ffa000;"><strong>Pre-existing Damage:</strong><br/>${escapeHtml(intake.preExistingDamage)}</div>`);
+          }
+          document.getElementById("device-intake-view-content").innerHTML = rows.join('');
+          document.getElementById("device-intake-view-modal").style.display = "flex";
+        } catch (err) { toast("Could not parse device intake data", "error"); }
         return;
       }
 
@@ -10967,7 +11615,7 @@ window.openDayEndModal = async (dateStr = "") => {
     // Store data for printing
     window.__currentDayEndData = res;
   } catch (err) {
-    content.innerHTML = `<p style="color:var(--danger); padding:20px;">${err.message}</p>`;
+    content.innerHTML = `<p style="color:var(--danger); padding:20px;">${escapeHtml(err.message)}</p>`;
   }
 };
 
@@ -10979,7 +11627,7 @@ window.printDayEnd = () => {
   printWindow.document.write(`
     <html>
       <head>
-        <title>Closing Report - ${data.date}</title>
+        <title>Closing Report - ${escapeHtml(data.date)}</title>
         <style>
           body { font-family: sans-serif; padding: 40px; color: #333; }
           h1 { margin-bottom: 5px; }
@@ -10992,7 +11640,7 @@ window.printDayEnd = () => {
       </head>
       <body>
         <h1>Techlab Closing Report</h1>
-        <p>Date: ${data.date}</p>
+        <p>Date: ${escapeHtml(data.date)}</p>
         <div class="summary">
           <div>Cash Total: <strong>${formatCurrency(data.summary.cashTotal)}</strong></div>
           <div>UPI Total: <strong>${formatCurrency(data.summary.upiTotal)}</strong></div>
@@ -11003,9 +11651,9 @@ window.printDayEnd = () => {
           <tbody>
             ${data.transactions.map(t => `
               <tr>
-                <td>${t.customer_name}</td>
-                <td>${t.type}</td>
-                <td>${t.payment_mode}</td>
+                <td>${escapeHtml(t.customer_name)}</td>
+                <td>${escapeHtml(t.type)}</td>
+                <td>${escapeHtml(t.payment_mode)}</td>
                 <td>${formatCurrency(t.amount)}</td>
               </tr>
             `).join('')}
@@ -11386,7 +12034,7 @@ const renderDashboardDetailModal = async (type) => {
     html += `</tbody></table>`;
     content.innerHTML = html;
   } catch (err) {
-    content.innerHTML = `<p style="padding:20px; text-align:center; color:var(--danger);">${err.message}</p>`;
+    content.innerHTML = `<p style="padding:20px; text-align:center; color:var(--danger);">${escapeHtml(err.message)}</p>`;
   }
 };
 window.renderDashboardDetailModal = renderDashboardDetailModal;
@@ -11433,7 +12081,7 @@ const renderSupplierDuesModal = async () => {
       </table>
     `;
   } catch (err) {
-    content.innerHTML = `<p style="padding:20px; text-align:center; color:var(--danger);">${err.message}</p>`;
+    content.innerHTML = `<p style="padding:20px; text-align:center; color:var(--danger);">${escapeHtml(err.message)}</p>`;
   }
 };
 
@@ -11577,9 +12225,19 @@ if (cartModal && cartIcon) {
   cartModal.addEventListener("click", (e) => { if (e.target === cartModal) cartModal.style.display = "none"; });
 }
 
-initPage();
+initPage().catch(reportPageError);
 if (typeof lucide !== 'undefined') {
   lucide.createIcons();
-  const iconObserver = new MutationObserver(() => { lucide.createIcons(); });
+  let iconRefreshScheduled = false;
+  const iconObserver = new MutationObserver(() => {
+    if (iconRefreshScheduled) return;
+    iconRefreshScheduled = true;
+    requestAnimationFrame(() => {
+      iconRefreshScheduled = false;
+      iconObserver.disconnect();
+      lucide.createIcons();
+      iconObserver.observe(document.body, { childList: true, subtree: true });
+    });
+  });
   iconObserver.observe(document.body, { childList: true, subtree: true });
 }

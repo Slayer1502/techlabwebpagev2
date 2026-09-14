@@ -1,18 +1,18 @@
-const { db } = require("../../db");
+const { db, nowIso } = require("../../db");
 
 const getUserById = (id) => {
     return db.prepare("SELECT id, name, email, role, mobile FROM users WHERE id = ?").get(id);
 };
 
 const getUserByEmail = (email) => {
-    return db.prepare("SELECT id, name, email, role, mobile, password_hash FROM users WHERE email = ? AND role IN ('admin', 'employee', 'sales', 'technician')").get(email);
+    return db.prepare("SELECT id, name, email, role, mobile, password_hash FROM users WHERE email = ? AND role IN ('admin', 'employee', 'sales', 'technician', 'auditor')").get(email);
 };
 
 const getStaffMembers = (limit, offset) => {
     return db.prepare(`
         SELECT id, name, email, mobile, role
         FROM users
-        WHERE role IN ('admin', 'employee', 'sales', 'technician')
+        WHERE role IN ('admin', 'employee', 'sales', 'technician', 'auditor')
         ORDER BY role, name
         LIMIT ? OFFSET ?
     `).all(limit, offset);

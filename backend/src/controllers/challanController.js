@@ -43,8 +43,8 @@ const returnChallanItems = async (req, res) => {
 const consolidateToBill = async (req, res) => {
   try {
     const { ids, isGst } = req.body;
-    if (!Array.isArray(ids) || ids.length < 2) {
-      return res.status(400).json({ error: "Select at least 2 challans to consolidate" });
+    if (!Array.isArray(ids) || ids.length < 1) {
+      return res.status(400).json({ error: "Select at least 1 challan to bill" });
     }
     const orderId = challanService.consolidateChallansToBill(ids, isGst);
     res.json({ message: "Challans consolidated successfully", orderId });
@@ -59,11 +59,31 @@ const getChallanDetail = async (req, res) => {
     res.json(data);
 };
 
+const markDelivered = async (req, res) => {
+  try {
+    const result = challanService.markDelivered(req.params.id, req.user.id, req.body.receivedBy);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+};
+
+const voidChallan = async (req, res) => {
+  try {
+    const result = challanService.voidChallan(req.params.id, req.user.id, req.body.reason);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+};
+
 module.exports = {
   createChallan,
   getChallans,
   createStandaloneChallan,
   returnChallanItems,
   consolidateToBill,
-  getChallanDetail
+  getChallanDetail,
+  markDelivered,
+  voidChallan
 };

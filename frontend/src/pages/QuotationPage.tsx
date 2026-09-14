@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { quotationService } from '../services/quotationService';
-import { settingsService } from '../services/settingsService';
+
 import {
   FileText,
   Plus,
@@ -18,9 +19,11 @@ import {
 import { formatCurrencyValue, formatDateValue } from '../utils/helpers';
 import { Quotation } from '../types';
 import { toast } from '../utils/toast';
-import QuotationBuilder from '../components/QuotationBuilder';
+import QuotationComposer from '../components/QuotationComposer';
 
 const QuotationPage = () => {
+  const { id } = useParams();
+  const navigate = useNavigate();
   const [view, setView] = useState<'list' | 'form'>('list');
   const [search, setSearch] = useState('');
   const [editingQuote, setEditingQuote] = useState<Quotation | null>(null);
@@ -32,6 +35,13 @@ const QuotationPage = () => {
     queryFn: () => quotationService.getQuotations(),
   });
 
+  useEffect(() => {
+    if (id && quotations && !viewingQuote && view === 'list') {
+      const match = quotations.find((q) => q.id === id);
+      if (match) setViewingQuote(match);
+    }
+  }, [id, quotations, viewingQuote, view]);
+
   const deleteMutation = useMutation({
     mutationFn: (id: string) => quotationService.deleteQuotation(id),
     onSuccess: () => {
@@ -42,9 +52,17 @@ const QuotationPage = () => {
 
   const convertMutation = useMutation({
     mutationFn: (id: string) => quotationService.convertToSale(id),
-    onSuccess: () => {
-      toast('Quotation converted to Sale!', 'success');
+    onSuccess: (data: any) => {
+      const pos = data?.poNumbers || [];
+      if (pos.length) {
+        toast(`Converted to Sale — Purchase Order${pos.length > 1 ? 's' : ''} created: ${pos.join(', ')}`, 'success');
+      } else {
+        toast(data?.preCovered?.length ? 'Converted to Sale — items already covered by existing POs' : 'Quotation converted to Sale!', 'success');
+      }
       queryClient.invalidateQueries({ queryKey: ['quotations'] });
+    },
+    onError: (err: any) => {
+      toast(err?.response?.data?.error || 'Failed to convert quotation', 'error');
     },
   });
 
@@ -75,56 +93,9 @@ const QuotationPage = () => {
     window.open(`https://wa.me/91${mobile}?text=${encodeURIComponent(msg)}`, "_blank");
   };
 
-  const printQuotation = async (q: Quotation) => {
-    let biz = { business_name: "TECHLAB", business_address: "", business_phone: "", business_email: "" };
-    try {
-      const data = await settingsService.getBusiness();
-      biz = { ...biz, ...(data.settings || {}) };
-    } catch (e) { /* use defaults */ }
-
-    const lineRows = (q.items || [])
-      .map(l => `<tr><td>${l.product_name}</td><td>${l.quantity}</td><td>${formatCurrencyValue(l.unit_price)}</td><td>${formatCurrencyValue(l.unit_price * l.quantity)}</td></tr>`)
-      .join('');
-
-    const html = `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<title>Quotation | TECHLAB</title>
-<style>
-  body{font-family:"Segoe UI",Arial,sans-serif;color:#17253d;max-width:720px;margin:24px auto;padding:0 16px;}
-  h1{font-size:22px;margin:0 0 2px;}
-  .biz{color:#63748d;font-size:13px;line-height:1.6;}
-  .doc-type{font-size:13px;text-transform:uppercase;letter-spacing:1px;color:#1663ff;font-weight:700;margin:18px 0 4px;}
-  .meta{display:flex;justify-content:space-between;gap:20px;margin-top:10px;color:#63748d;font-size:12px;flex-wrap:wrap;}
-  table{width:100%;border-collapse:collapse;margin-top:14px;font-size:14px;}
-  th,td{padding:8px 10px;border-bottom:1px solid #d7e3f2;text-align:left;}
-  th{color:#63748d;font-size:11px;text-transform:uppercase;}
-  .total-row td{font-weight:800;font-size:16px;border-top:2px solid #1663ff;}
-  .foot{color:#63748d;font-size:12px;margin-top:24px;}
-  @media print{body{margin:0}}
-</style>
-</head>
-<body>
-  <h1>${biz.business_name || "TECHLAB"}</h1>
-  <div class="biz">${biz.business_address || ""}${biz.business_phone ? "<br>Phone: " + biz.business_phone : ""}${biz.business_email ? "<br>Email: " + biz.business_email : ""}</div>
-  <div class="doc-type">Quotation</div>
-  <div class="meta"><span>Quotation No: ${q.quote_number}</span><span>Date: ${formatDateValue(q.quote_date)}</span><span>Valid until: ${q.valid_until ? formatDateValue(q.valid_until) : "-"}</span></div>
-  <div style="margin-top:12px;"><strong>Customer:</strong> ${q.customer_name || "-"}${q.customer_mobile ? " (" + q.customer_mobile + ")" : ""}${q.customer_address ? "<br>" + q.customer_address : ""}</div>
-  <table>
-    <thead><tr><th>Item</th><th>Qty</th><th>Unit Price</th><th>Amount</th></tr></thead>
-    <tbody>${lineRows}</tbody>
-    <tr class="total-row"><td colspan="3">Total</td><td>${formatCurrencyValue(q.total_amount)}</td></tr>
-  </table>
-  <p class="foot">This quotation is valid until the date shown above. Prices include applicable taxes unless stated otherwise.</p>
-  <script>window.onload = function(){ window.print(); };<\/script>
-</body>
-</html>`;
-
-    const win = window.open("", "_blank", "width=760,height=900");
+  const printQuotation = (q: Quotation) => {
+    const win = window.open(`/api/sales/quotations/${q.id}/pdf`, "_blank");
     if (!win) return toast("Pop-up blocked. Please allow pop-ups for printing.", "error");
-    win.document.write(html);
-    win.document.close();
   };
 
   const filtered = quotations?.filter(q =>
@@ -132,6 +103,21 @@ const QuotationPage = () => {
     q.customer_mobile.includes(search) ||
     q.quote_number.includes(search)
   );
+
+  const linkedPoIds = (q: Quotation): string[] => {
+    if (!q.po_ids) return [];
+    try {
+      const arr = JSON.parse(q.po_ids);
+      return Array.isArray(arr) ? arr : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const quoteStatusStyle = (status: string) =>
+    status === 'converted' ? 'bg-green-100 text-green-600'
+    : status === 'cancelled' ? 'bg-gray-100 text-gray-500 line-through'
+    : 'bg-orange-100 text-orange-600';
 
   return (
     <Layout>
@@ -169,7 +155,7 @@ const QuotationPage = () => {
                     <button onClick={() => printQuotation(viewingQuote)} className="flex items-center gap-2 bg-blue/5 text-blue px-4 py-2 rounded-xl font-bold hover:bg-blue/10 transition-all">
                        <Printer className="h-4 w-4" /> Print
                     </button>
-                    <button onClick={() => setViewingQuote(null)} className="text-sm font-bold text-text-soft hover:text-navy transition-colors px-2">Back</button>
+                    <button onClick={() => { setViewingQuote(null); navigate('/quotations'); }} className="text-sm font-bold text-text-soft hover:text-navy transition-colors px-2">Back</button>
                  </div>
               </div>
 
@@ -184,9 +170,24 @@ const QuotationPage = () => {
                  </div>
                  <div className="p-4 rounded-2xl bg-soft/40">
                     <p className="text-[10px] font-bold text-text-soft uppercase mb-1">Status</p>
-                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${viewingQuote.status === 'converted' ? 'bg-green-100 text-green-600' : 'bg-orange-100 text-orange-600'}`}>
+                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${quoteStatusStyle(viewingQuote.status)}`}>
                        {viewingQuote.status}
                     </span>
+                 </div>
+                 <div className="p-4 rounded-2xl bg-soft/40">
+                    <p className="text-[10px] font-bold text-text-soft uppercase mb-1">Source</p>
+                    {viewingQuote.service_request_id ? (
+                       <p className="text-sm font-bold text-navy">Service Request</p>
+                    ) : viewingQuote.enquiry_id ? (
+                       <p className="text-sm font-bold text-navy">Linked Lead</p>
+                    ) : (
+                       <p className="text-sm font-bold text-navy">Manual</p>
+                    )}
+                    {viewingQuote.service_request_id ? (
+                       <p className="text-[10px] text-text-soft uppercase font-bold">#{viewingQuote.service_request_id.slice(-8)}</p>
+                    ) : viewingQuote.enquiry_id ? (
+                       <p className="text-[10px] text-purple-600 uppercase font-bold">Lead #{viewingQuote.enquiry_id.slice(-8)}</p>
+                    ) : null}
                  </div>
               </div>
 
@@ -243,7 +244,7 @@ const QuotationPage = () => {
                        <thead className="bg-gray-50/50 border-b">
                           <tr className="text-[10px] font-bold text-text-soft uppercase tracking-wider">
                               <th className="px-8 py-5">Quote Number</th>
-                              <th className="px-8 py-5">Service Request</th>
+                              <th className="px-8 py-5">Linked To</th>
                               <th className="px-8 py-5">Customer</th>
                              <th className="px-8 py-5">Amount</th>
                              <th className="px-8 py-5">Status</th>
@@ -262,11 +263,20 @@ const QuotationPage = () => {
                                          <FileText className="h-4 w-4" />
                                       </div>
                                        <p className="text-sm font-bold text-navy uppercase">{q.quote_number}</p>
+                                       {linkedPoIds(q).length > 0 && (
+                                          <div className="flex gap-1 mt-0.5">
+                                             {linkedPoIds(q).map(pid => (
+                                               <span key={pid} className="text-[9px] font-bold text-orange-600 bg-orange-50 border border-orange-100 px-1.5 py-0.5 rounded uppercase">PO {pid.slice(-4).toUpperCase()}</span>
+                                             ))}
+                                          </div>
+                                       )}
                                     </div>
                                  </td>
                                  <td className="px-8 py-5">
                                     {q.service_request_id ? (
-                                       <span className="text-xs font-bold text-blue bg-blue/5 px-2.5 py-1 rounded-lg uppercase">{q.service_request_id}</span>
+                                       <span className="text-xs font-bold text-blue bg-blue/5 px-2.5 py-1 rounded-lg uppercase">{q.service_request_id.slice(-8)}</span>
+                                    ) : q.enquiry_id ? (
+                                       <span className="text-xs font-bold text-purple-600 bg-purple-50 px-2.5 py-1 rounded-lg uppercase">Lead #{q.enquiry_id.slice(-8)}</span>
                                     ) : (
                                        <span className="text-xs text-text-soft">—</span>
                                     )}
@@ -281,9 +291,9 @@ const QuotationPage = () => {
                                    {formatCurrencyValue(q.total_amount)}
                                 </td>
                                 <td className="px-8 py-5">
-                                   <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${q.status === 'converted' ? 'bg-green-100 text-green-600' : 'bg-orange-100 text-orange-600'}`}>
-                                     {q.status}
-                                   </span>
+<span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${quoteStatusStyle(q.status)}`}>
+                                      {q.status}
+                                    </span>
                                 </td>
                                 <td className="px-8 py-5 text-xs text-text-soft font-medium">
                                    {formatDateValue(q.quote_date)}
@@ -337,26 +347,22 @@ const QuotationPage = () => {
         ) : (
            <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm animate-in zoom-in-95 duration-300 h-full">
               <div className="flex justify-between items-center mb-8 pb-4 border-b">
-                 <h2 className="text-xl font-bold text-navy">Quotation Builder</h2>
+                 <h2 className="text-xl font-bold text-navy">{editingQuote ? 'Edit Quotation' : 'Quotation Builder'}</h2>
                  <button onClick={() => { setEditingQuote(null); setView('list'); }} className="text-sm font-bold text-text-soft hover:text-navy transition-colors">Cancel & Return</button>
               </div>
 
-              <QuotationBuilder
-                onClose={() => setView('list')}
-                onSuccess={() => queryClient.invalidateQueries({ queryKey: ['quotations'] })}
-                editingId={editingQuote?.id || ''}
-                initialQuoteDate={editingQuote?.quote_date || ''}
-                initialCustomerName={editingQuote?.customer_name || ''}
-                initialCustomerMobile={editingQuote?.customer_mobile || ''}
-                initialCustomerAddress={editingQuote?.customer_address || ''}
+              <QuotationComposer
+                context={{
+                  type: 'manual',
+                  editingId: editingQuote?.id || '',
+                  customerName: editingQuote?.customer_name || '',
+                  customerMobile: editingQuote?.customer_mobile || '',
+                  customerAddress: editingQuote?.customer_address || '',
+                  initialLines: editingQuote?.items || []
+                }}
                 initialValidUntil={editingQuote?.valid_until || ''}
-                initialServiceRequestId={editingQuote?.service_request_id || ''}
-                initialItems={(editingQuote?.items || []).map(i => ({
-                  productId: i.product_id ?? null,
-                  product_name: i.product_name,
-                  quantity: i.quantity,
-                  unit_price: i.unit_price
-                }))}
+                onClose={() => { setEditingQuote(null); setView('list'); }}
+                onSuccess={() => queryClient.invalidateQueries({ queryKey: ['quotations'] })}
               />
            </div>
         )}

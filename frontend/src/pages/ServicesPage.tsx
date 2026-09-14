@@ -250,14 +250,20 @@ const ServicesPage = () => {
 
                   <div className="flex items-center justify-end gap-2 pt-4 md:pt-0 border-t md:border-0" onClick={e => e.stopPropagation()}>
                     {user?.role === 'technician' && req.status !== 'Completed' && (
-                       <>
-                         <button
-                           onClick={() => navigate(`/tickets/${req.id}/survey`)}
-                          className="flex-1 md:flex-none bg-soft text-blue px-4 py-2 rounded-lg text-sm font-bold hover:bg-blue/10 transition-colors border border-blue/10"
-                         >
-                           Survey
-                         </button>
-                         <button
+<>
+                          {(req.survey_status === 'submitted' || req.survey_status === 'reviewed') ? (
+                            <span className="flex-1 md:flex-none bg-green-50 text-green-700 px-4 py-2 rounded-lg text-sm font-bold border border-green-200 text-center">
+                               Survey Submitted
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => navigate(`/tickets/${req.id}/survey`)}
+                             className="flex-1 md:flex-none bg-soft text-blue px-4 py-2 rounded-lg text-sm font-bold hover:bg-blue/10 transition-colors border border-blue/10"
+                            >
+                              Survey
+                            </button>
+                          )}
+                          <button
                           onClick={() => handleOpenCompletion(req.id, 'update')}
                           className="flex-1 md:flex-none bg-soft text-navy px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-100 transition-colors border border-gray-200"
                          >
@@ -319,6 +325,7 @@ const ServicesPage = () => {
           onConfirm={handleConfirmCompletion}
           loading={completeJobMutation.isPending}
           mode={modalMode}
+          challan={currentRequest?.challan}
           initialItems={currentRequest?.used_items}
           initialConveyance={currentRequest?.conveyance_expense}
           initialNotes={currentRequest?.status_notes}

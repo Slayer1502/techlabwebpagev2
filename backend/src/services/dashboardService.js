@@ -10,12 +10,12 @@ const getAdminDashboardData = (limit, offset) => {
     LIMIT ? OFFSET ?
   `).all(limit, offset);
 
-  const orders = db.prepare("SELECT id, customer_name, total_amount, taxable_amount, cgst_total, sgst_total, gst_total, status, created_at FROM product_orders ORDER BY created_at DESC LIMIT ? OFFSET ?").all(limit, offset);
+  const orders = db.prepare("SELECT id, bill_number, customer_name, total_amount, taxable_amount, cgst_total, sgst_total, gst_total, status, created_at FROM product_orders ORDER BY created_at DESC LIMIT ? OFFSET ?").all(limit, offset);
   const requests = db.prepare("SELECT * FROM service_requests ORDER BY created_at DESC LIMIT ? OFFSET ?").all(limit, offset);
   const products = db
     .prepare(`
       SELECT p.id, p.type, p.name, p.price, p.description, p.discount_percent, p.stock, p.updated_by_employee_name, p.supplier_id, s.name as supplier_name, p.hsn_code, p.gst_rate,
-             p.unit_type, p.base_unit, p.sub_unit, p.conversion_factor, p.loose_stock
+             p.unit_type, p.base_unit, p.sub_unit, p.conversion_factor, p.loose_stock, p.min_stock
       FROM products p
       LEFT JOIN suppliers s ON p.supplier_id = s.id
       WHERE p.active = 1
@@ -78,7 +78,7 @@ const getSalesDashboardData = (query) => {
   const products = db
     .prepare(`
       SELECT p.id, p.type, p.name, p.price, p.description, p.discount_percent, p.stock, p.updated_by_employee_name, p.supplier_id, s.name as supplier_name, p.hsn_code, p.gst_rate,
-             p.unit_type, p.base_unit, p.sub_unit, p.conversion_factor, p.loose_stock
+             p.unit_type, p.base_unit, p.sub_unit, p.conversion_factor, p.loose_stock, p.min_stock
       FROM products p
       LEFT JOIN suppliers s ON p.supplier_id = s.id
       WHERE p.active = 1
@@ -252,6 +252,24 @@ const getTechnicianDashboardData = (userId, userName) => {
     WHERE (assigned_employee_id = ? OR service_person = ?)
     ORDER BY scheduled_date DESC
   `).all(userId, userName);
+
+  const challanStmt = db.prepare(`
+    SELECT * FROM delivery_challans
+    WHERE source_type = 'service' AND source_id = ?
+    ORDER BY created_at DESC, id DESC LIMIT 1
+  `);
+  const challanItemsStmt = db.prepare(
+    "SELECT id, item_name, qty, unit_price, total_price FROM delivery_challan_items WHERE challan_id = ? ORDER BY id"
+  );
+  requests.forEach((r) => {
+    const challan = challanStmt.get(r.id);
+    if (challan) {
+      challan.items = challanItemsStmt.all(challan.id);
+      r.challan = challan;
+    } else {
+      r.challan = null;
+    }
+  });
 
   const availablePool = db.prepare(`
     SELECT * FROM service_requests

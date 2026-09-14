@@ -111,7 +111,7 @@ const sendOrderInvoiceEmail = async (req, res) => {
     pdfDoc.end();
     const pdfBuffer = await streamToBuffer(pdfDoc);
 
-    const invNo = `INV-${order.id.slice(-6).toUpperCase()}`;
+    const invNo = order.bill_number || `INV-${order.id.slice(-6).toUpperCase()}`;
     const subject = `[TECHLAB] Tax Invoice #${invNo}`;
     const html = `
       <div style="font-family: Arial, sans-serif; color: #10284f; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 16px;">
@@ -120,7 +120,7 @@ const sendOrderInvoiceEmail = async (req, res) => {
         <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
 
         <p>Dear <strong>${order.customer_name}</strong>,</p>
-        <p>Thank you for your business! Please find attached your tax invoice for order <strong>#${order.id.slice(-6).toUpperCase()}</strong>.</p>
+        <p>Thank you for your business! Please find attached your tax invoice for order <strong>#${invNo}</strong>.</p>
 
         <div style="background-color: #f8fafc; padding: 15px; border-radius: 12px; margin: 20px 0;">
           <p style="margin: 5px 0; font-size: 14px;"><strong>Invoice Ref:</strong> ${invNo}</p>

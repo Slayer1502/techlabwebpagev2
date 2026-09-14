@@ -17,12 +17,15 @@ import {
 import { formatCurrencyValue, formatDateValue } from '../utils/helpers';
 import { toast } from '../utils/toast';
 import OrderDetailDrawer from '../components/OrderDetailDrawer';
+import { useAuthStore } from '../store/authStore';
 
 const OrdersPage = () => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<{ id: string; sourceType?: string; billNumber?: string } | null>(null);
   const queryClient = useQueryClient();
+  const { user } = useAuthStore();
+  const canWrite = ['admin', 'sales'].includes(user?.role || '');
 
   const { data: orders, isLoading } = useQuery({
     queryKey: ['orders', statusFilter],
@@ -65,6 +68,7 @@ const OrdersPage = () => {
             <h1 className="text-2xl font-bold text-navy">Sales History</h1>
             <p className="text-text-soft text-sm">Review and manage all customer product orders</p>
           </div>
+          {canWrite && (
           <button
             onClick={() => window.location.href = '/pos'}
             className="flex items-center justify-center gap-2 bg-navy text-white px-6 py-2.5 rounded-xl font-bold hover:opacity-90 transition-all shadow-lg shadow-navy/20"
@@ -72,6 +76,7 @@ const OrdersPage = () => {
             <FileText className="h-5 w-5" />
             New POS Bill
           </button>
+          )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
@@ -119,10 +124,13 @@ const OrdersPage = () => {
                         <tr key={i} className="animate-pulse"><td colSpan={6} className="px-6 py-8"><div className="h-4 bg-gray-100 rounded-full w-full"></div></td></tr>
                       ))
                    ) : filteredOrders?.map((o: any) => (
-                      <tr key={o.id} className="group hover:bg-soft/30 transition-colors">
+                      <tr key={`${o.source_type}-${o.id}`} className="group hover:bg-soft/30 transition-colors">
                         <td className="px-6 py-4">
-                           <p className="text-xs font-bold text-navy uppercase">#{o.id.slice(-8)}</p>
-                           {o.is_gst_bill === 1 && <span className="text-[8px] font-black text-blue bg-blue/10 px-1 rounded">GST</span>}
+                           <p className="text-xs font-bold text-navy uppercase">#{o.bill_number || (o.source_type === 'service' ? 'SR-' : '') + o.id.slice(-8)}</p>
+                           {o.source_type === 'service'
+                              ? <span className="text-[8px] font-black text-purple-600 bg-purple-50 px-1 rounded ml-1">SERVICE</span>
+                              : <span className="text-[8px] font-black text-blue bg-blue/10 px-1 rounded ml-1">ORDER</span>}
+                           {o.is_gst_bill === 1 && <span className="text-[8px] font-black text-blue bg-blue/10 px-1 rounded ml-1">GST</span>}
                         </td>
                         <td className="px-6 py-4">
                            <div>
@@ -143,24 +151,28 @@ const OrdersPage = () => {
                         <td className="px-6 py-4 text-right">
                            <div className="flex justify-end gap-2">
                               <button
-                                onClick={() => window.open(`/api/sales/orders/${o.id}/invoice.pdf`, '_blank')}
+                                onClick={() => window.open(o.source_type === 'service'
+                                  ? `/api/sales/service-requests/${o.id}/bill.pdf`
+                                  : `/api/sales/orders/${o.id}/invoice.pdf`, '_blank')}
                                 className="p-2 text-blue hover:bg-blue/10 rounded-lg transition-all"
-                                title="Download Invoice"
+                                title="Download Bill"
                               >
                                 <Download className="h-4 w-4" />
                               </button>
                               <button
-                                onClick={() => setSelectedOrderId(o.id)}
+                                onClick={() => setSelectedOrder({ id: o.id, sourceType: o.source_type, billNumber: o.bill_number })}
                                 className="p-2 text-text-soft hover:bg-gray-100 rounded-lg"
                               >
                                 <Eye className="h-4 w-4" />
                               </button>
+                              {canWrite && o.source_type !== 'service' && (
                               <button
                                 onClick={() => { if(window.confirm('Cancel order?')) deleteMutation.mutate(o.id); }}
                                 className="p-2 text-text-soft hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
                               >
                                 <Trash2 className="h-4 w-4" />
                               </button>
+                              )}
                            </div>
                         </td>
                       </tr>
@@ -179,10 +191,12 @@ const OrdersPage = () => {
         </div>
       </div>
 
-      {selectedOrderId && (
+      {selectedOrder && (
         <OrderDetailDrawer
-           orderId={selectedOrderId}
-           onClose={() => setSelectedOrderId(null)}
+           orderId={selectedOrder.id}
+           sourceType={selectedOrder.sourceType || 'order'}
+           billNumber={selectedOrder.billNumber}
+           onClose={() => setSelectedOrder(null)}
         />
       )}
     </Layout>

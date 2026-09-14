@@ -11,6 +11,11 @@ export const challanService = {
     return res.data;
   },
 
+  getChallanForSource: async (sourceType: string, sourceId: string) => {
+    const res = await api.get('/sales/challans', { params: { sourceType, sourceId } });
+    return res.data;
+  },
+
   createChallan: async (data: any) => {
     const res = await api.post('/sales/challans', data);
     return res.data;
@@ -28,6 +33,16 @@ export const challanService = {
 
   returnItems: async (id: string, returns: any) => {
     const res = await api.post(`/sales/challans/${id}/return-items`, { returns });
+    return res.data;
+  },
+
+  markDelivered: async (id: string, receivedBy?: string) => {
+    const res = await api.post(`/sales/challans/${id}/mark-delivered`, { receivedBy });
+    return res.data;
+  },
+
+  voidChallan: async (id: string, reason?: string) => {
+    const res = await api.post(`/sales/challans/${id}/void`, { reason });
     return res.data;
   }
 };

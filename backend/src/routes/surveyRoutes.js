@@ -31,8 +31,15 @@ router.post("/technician/service-requests/:id/survey", authRequired(["technician
 router.post("/technician/service-requests/:id/job-complete", authRequired(["technician"]), serviceRequestController.jobComplete);
 router.patch("/technician/service-requests/:id/update", authRequired(["technician"]), serviceRequestController.updateJobProgress);
 
+// Technician Part Requests
+router.post("/technician/service-requests/:id/parts", authRequired(["technician"]), serviceRequestController.requestParts);
+router.post("/technician/service-requests/:id/part-collected", authRequired(["technician"]), serviceRequestController.markPartsCollected);
+
 // Sales Survey
 router.get("/sales/service-requests/:id/survey", authRequired(["sales", "admin"]), surveyController.getSurvey);
 router.patch("/sales/service-requests/:id/survey/review", authRequired(["sales", "admin"]), surveyController.reviewSurvey);
+
+// Sales Part Management
+router.post("/sales/service-requests/:id/part-ready", authRequired(["sales", "admin"]), serviceRequestController.markPartsAvailable);
 
 module.exports = router;

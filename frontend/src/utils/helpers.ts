@@ -11,6 +11,30 @@ export const formatDateValue = (value: string) => {
   return normalized ? normalized.slice(0, 10) : "-";
 };
 
+export const getEnquiryQuoteTotal = (quoteOptionsRaw: string | undefined | null) => {
+  try {
+    const parsed = quoteOptionsRaw ? JSON.parse(quoteOptionsRaw) : [];
+    if (!Array.isArray(parsed)) return 0;
+    return parsed.reduce((s, l) => s + ((Number(l?.quotedPrice) || 0) * (Number(l?.quantity) || 1)), 0);
+  } catch {
+    return 0;
+  }
+};
+
+export const getEnquiryMargin = (quoteOptionsRaw: string | undefined | null) => {
+  try {
+    const parsed = quoteOptionsRaw ? JSON.parse(quoteOptionsRaw) : [];
+    if (!Array.isArray(parsed)) return { totalCost: 0, totalQuoted: 0, margin: 0, marginPercent: 0 };
+    const totalCost = parsed.reduce((s, l) => s + (Number(l?.costPrice) || 0), 0);
+    const totalQuoted = parsed.reduce((s, l) => s + ((Number(l?.quotedPrice) || 0) * (Number(l?.quantity) || 1)), 0);
+    const margin = totalQuoted - totalCost;
+    const marginPercent = totalCost > 0 ? Math.round((margin / totalCost) * 100) : 0;
+    return { totalCost, totalQuoted, margin, marginPercent };
+  } catch {
+    return { totalCost: 0, totalQuoted: 0, margin: 0, marginPercent: 0 };
+  }
+};
+
 export const isSiteVisitType = (deviceType: string) => {
   return deviceType === "New Installation (Site Visit)" ||
          deviceType === "Old Installation Service" ||

@@ -19,18 +19,40 @@ import {
 } from 'lucide-react';
 import { formatCurrencyValue, formatDateValue } from '../utils/helpers';
 import { orderService } from '../services/orderService';
+import api from '../utils/api';
 import { Product } from '../types';
 
 interface Props {
   orderId: string;
+  sourceType?: string;
+  billNumber?: string;
   onClose: () => void;
 }
 
-const OrderDetailDrawer = ({ orderId, onClose }: Props) => {
+const OrderDetailDrawer = ({ orderId, sourceType = 'order', billNumber, onClose }: Props) => {
+  const isService = sourceType === 'service';
   const { data: items, isLoading } = useQuery({
     queryKey: ['order-items', orderId],
-    queryFn: () => orderService.getOrderItems(orderId),
+    queryFn: () => isService
+      ? api.get(`/sales/service-requests/${orderId}`).then(r => {
+          let details: any[] = [];
+          try { details = typeof r.data.request.bill_details === 'string' ? JSON.parse(r.data.request.bill_details) : (r.data.request.bill_details || []); } catch {}
+          return {
+            billNumber: r.data.request.bill_number || billNumber,
+            rows: details.map((d: any) => ({
+              product_name: d.desc || 'Service',
+              qty: d.qty || 1,
+              price: d.rate || d.amount || 0,
+              hsn_code: d.hsn_code || null,
+              cgst_amount: d.cgst_amount || 0,
+              sgst_amount: d.sgst_amount || 0,
+              taxable_amount: d.taxable_amount ?? (d.rate || d.amount || 0) * (d.qty || 1)
+            }))
+          };
+        })
+      : orderService.getOrderItems(orderId).then((rows: any) => ({ billNumber, rows })),
   });
+  const drawerBillNo = items?.billNumber || billNumber;
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -39,13 +61,13 @@ const OrderDetailDrawer = ({ orderId, onClose }: Props) => {
       <div className="relative w-full max-w-xl bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
         <div className="p-8 border-b bg-gray-50 flex justify-between items-center">
            <div>
-              <div className="flex items-center gap-2 mb-2">
-                 <ShoppingCart className="h-5 w-5 text-blue" />
-                 <span className="text-[10px] font-black text-blue uppercase tracking-widest bg-blue/5 px-2 py-0.5 rounded-full border border-blue/10">Order Detail</span>
-              </div>
-              <h2 className="text-xl font-black text-navy uppercase tracking-tight flex items-center gap-2">
-                 Ref: #{orderId.slice(-8)}
-              </h2>
+<div className="flex items-center gap-2 mb-2">
+                  <ShoppingCart className="h-5 w-5 text-blue" />
+                  <span className="text-[10px] font-black text-blue uppercase tracking-widest bg-blue/5 px-2 py-0.5 rounded-full border border-blue/10">{isService ? 'Service Bill Detail' : 'Order Detail'}</span>
+               </div>
+               <h2 className="text-xl font-black text-navy uppercase tracking-tight flex items-center gap-2">
+                  Ref: {drawerBillNo || `#${isService ? 'SR-' : ''}${orderId.slice(-8)}`}
+               </h2>
            </div>
            <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-full transition-colors text-text-soft">
               <X className="h-6 w-6" />
@@ -66,7 +88,7 @@ const OrderDetailDrawer = ({ orderId, onClose }: Props) => {
                        <Package className="h-3.5 w-3.5" /> Items in this Order
                     </p>
                     <div className="bg-white rounded-[2rem] border border-gray-100 overflow-hidden divide-y shadow-sm">
-                       {items?.map((item: any, idx: number) => (
+                       {items?.rows?.map((item: any, idx: number) => (
                           <div key={idx} className="p-6 flex justify-between items-center group hover:bg-soft/20 transition-colors">
                              <div className="space-y-1">
                                 <p className="text-sm font-bold text-navy">{item.product_name}</p>
@@ -89,12 +111,12 @@ const OrderDetailDrawer = ({ orderId, onClose }: Props) => {
                     <div className="bg-navy p-6 rounded-[2rem] text-white shadow-xl shadow-navy/10 relative overflow-hidden">
                        <IndianRupee className="absolute -right-2 -bottom-2 h-16 w-16 text-white/5 rotate-12" />
                        <p className="text-[10px] text-gray-400 uppercase font-black tracking-widest mb-1">Taxable</p>
-                       <p className="text-lg font-bold">{formatCurrencyValue(items?.reduce((s:number, i:any) => s + (i.taxable_amount || 0), 0))}</p>
+                       <p className="text-lg font-bold">{formatCurrencyValue(items?.rows?.reduce((s:number, i:any) => s + (i.taxable_amount || 0), 0) || 0)}</p>
                     </div>
                     <div className="bg-blue p-6 rounded-[2rem] text-white shadow-xl shadow-blue/10 relative overflow-hidden">
                        <FileText className="absolute -right-2 -bottom-2 h-16 w-16 text-white/5 -rotate-12" />
                        <p className="text-[10px] text-blue-200 uppercase font-black tracking-widest mb-1">GST Total</p>
-                       <p className="text-lg font-bold">{formatCurrencyValue(items?.reduce((s:number, i:any) => s + (i.cgst_amount + i.sgst_amount || 0), 0))}</p>
+                       <p className="text-lg font-bold">{formatCurrencyValue(items?.rows?.reduce((s:number, i:any) => s + (i.cgst_amount + i.sgst_amount || 0), 0) || 0)}</p>
                     </div>
                  </div>
 
@@ -122,19 +144,23 @@ const OrderDetailDrawer = ({ orderId, onClose }: Props) => {
 
         <div className="p-8 border-t bg-gray-50 flex flex-col gap-3">
            <button
-              onClick={() => window.open(`/api/sales/orders/${orderId}/invoice.pdf`, '_blank')}
-              className="w-full py-4 bg-navy text-white rounded-2xl font-black uppercase tracking-widest hover:opacity-90 transition-all shadow-xl shadow-navy/20 flex items-center justify-center gap-3"
-           >
-              <Download className="h-5 w-5" /> Download Tax Invoice
-           </button>
-           <div className="grid grid-cols-2 gap-3">
-              <button className="py-3 bg-white border border-gray-200 rounded-xl text-xs font-black text-navy uppercase hover:bg-gray-50 transition-all flex items-center justify-center gap-2">
-                 <CreditCard className="h-4 w-4" /> Edit Order
-              </button>
-              <button className="py-3 bg-white border border-gray-200 rounded-xl text-xs font-black text-red-500 uppercase hover:bg-red-50 transition-all flex items-center justify-center gap-2">
-                 <Trash2 className="h-4 w-4" /> Void Sale
-              </button>
-           </div>
+onClick={() => window.open(isService
+                  ? `/api/sales/service-requests/${orderId}/bill.pdf`
+                  : `/api/sales/orders/${orderId}/invoice.pdf`, '_blank')}
+               className="w-full py-4 bg-navy text-white rounded-2xl font-black uppercase tracking-widest hover:opacity-90 transition-all shadow-xl shadow-navy/20 flex items-center justify-center gap-3"
+            >
+               <Download className="h-5 w-5" /> {isService ? 'Download Service Bill' : 'Download Tax Invoice'}
+            </button>
+<div className="grid grid-cols-2 gap-3">
+               <button className="py-3 bg-white border border-gray-200 rounded-xl text-xs font-black text-navy uppercase hover:bg-gray-50 transition-all flex items-center justify-center gap-2">
+                  <CreditCard className="h-4 w-4" /> {isService ? 'Service Detail' : 'Edit Order'}
+               </button>
+               {!isService && (
+               <button className="py-3 bg-white border border-gray-200 rounded-xl text-xs font-black text-red-500 uppercase hover:bg-red-50 transition-all flex items-center justify-center gap-2">
+                  <Trash2 className="h-4 w-4" /> Void Sale
+               </button>
+               )}
+            </div>
         </div>
       </div>
     </div>

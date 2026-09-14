@@ -1,6 +1,7 @@
 const { db, makeId, nowIso } = require("../../db");
 
 const getUserByMobile = db.prepare("SELECT id, name, email, role, mobile FROM users WHERE mobile = ?");
+const getCustomerRecordByMobile = (mobile) => getUserByMobile.get(mobile);
 const insertCustomer = db.prepare(`
   INSERT INTO users (id, name, email, password_hash, role, mobile, created_at)
   VALUES (@id, @name, NULL, NULL, 'customer', @mobile, @created_at)
@@ -30,4 +31,4 @@ const syncCustomerToParties = (name, mobile) => {
   }
 };
 
-module.exports = { syncCustomerToParties, getUserByMobile };
+module.exports = { syncCustomerToParties, getUserByMobile, getCustomerRecordByMobile };

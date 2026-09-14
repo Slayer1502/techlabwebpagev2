@@ -20,7 +20,7 @@ const PartyModal = ({ party, onClose, onSuccess, defaultType = 'customer' }: Par
     mobile: '',
     email: '',
     address: '',
-    gstin: '',
+    gstNumber: '',
     is_customer: defaultType === 'customer',
     is_supplier: defaultType === 'supplier',
   });
@@ -32,7 +32,7 @@ const PartyModal = ({ party, onClose, onSuccess, defaultType = 'customer' }: Par
         mobile: party.mobile,
         email: party.email || '',
         address: party.address || '',
-        gstin: party.gstin || '',
+        gstNumber: party.gst_number || party.gstin || '',
         is_customer: !!party.is_customer,
         is_supplier: !!party.is_supplier,
       });
@@ -140,8 +140,8 @@ const PartyModal = ({ party, onClose, onSuccess, defaultType = 'customer' }: Par
                   <CreditCard className="absolute left-3 top-3 h-4 w-4 text-text-soft" />
                   <input
                     className="w-full pl-10 pr-4 py-2 border rounded-xl outline-none focus:ring-2 focus:ring-blue/10"
-                    value={formData.gstin}
-                    onChange={e => setFormData({ ...formData, gstin: e.target.value })}
+                    value={formData.gstNumber}
+                    onChange={e => setFormData({ ...formData, gstNumber: e.target.value })}
                   />
                 </div>
               </div>

@@ -17,7 +17,8 @@ import {
   Star,
   Smartphone,
   Mail,
-  ShieldCheck
+  ShieldCheck,
+  Fuel
 } from 'lucide-react';
 import { toast } from '../utils/toast';
 import StaffModal from '../components/StaffModal';
@@ -216,6 +217,21 @@ const SettingsPage = () => {
                        value={bizForm.business_address}
                        onChange={e => setBizForm({ ...bizForm, business_address: e.target.value })}
                     />
+                 </div>
+                 <div className="p-5 bg-orange-50 rounded-3xl border border-orange-100 space-y-3">
+                    <div className="flex items-center gap-2 text-xs font-bold text-navy uppercase tracking-widest">
+                       <Fuel className="h-4 w-4 text-orange-600" /> Fuel Price Auto-Fill
+                    </div>
+                    <div className="space-y-1">
+                       <label className="text-[10px] font-bold text-text-soft uppercase ml-1">City for Live Fuel Rates</label>
+                       <input
+                          className="w-full px-5 py-3 border-2 border-gray-200 bg-white rounded-2xl outline-none focus:border-orange-400/50 transition-all font-bold text-navy"
+                          value={bizForm.fuel_city || ''}
+                          onChange={e => setBizForm({ ...bizForm, fuel_city: e.target.value })}
+                          placeholder="Karur"
+                       />
+                       <p className="text-[9px] text-text-soft italic ml-1">Live petrol &amp; diesel rates auto-fill the amount when an expense category is set to Fuel.</p>
+                    </div>
                  </div>
                  <div className="pt-4 border-t flex justify-end">
                     <button

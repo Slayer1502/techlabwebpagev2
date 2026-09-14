@@ -41,6 +41,11 @@ export const settingsService = {
     return res.data.staff;
   },
 
+  getTechnicians: async () => {
+    const res = await api.get('/admin/technicians');
+    return res.data.technicians;
+  },
+
   deleteStaff: async (id: string) => {
     const res = await api.delete(`/admin/staff/${id}`);
     return res.data;

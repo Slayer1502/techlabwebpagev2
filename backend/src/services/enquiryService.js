@@ -63,7 +63,16 @@ const updateEnquiry = (id, data, updatedBy) => {
   if (data.quotedPrice !== undefined) { sets.push("quoted_price = ?"); params.push(Number(data.quotedPrice) || 0); }
   if (data.quantity !== undefined) { sets.push("quantity = ?"); params.push(Number(data.quantity) || 1); }
   if (data.productId !== undefined) { sets.push("product_id = ?"); params.push(data.productId || null); }
-  if (data.quoteOptions !== undefined) { sets.push("quote_options = ?"); params.push(data.quoteOptions || null); }
+  if (data.quoteOptions !== undefined) {
+    const arr = Array.isArray(data.quoteOptions) ? data.quoteOptions : [];
+    sets.push("quote_options = ?");
+    params.push(arr.length ? JSON.stringify(arr) : null);
+    if (arr.length) {
+      sets.push("quoted_price = ?");
+      params.push(arr.reduce((s, l) => s + ((Number(l?.quotedPrice) || 0) * (Number(l?.quantity) || 1)), 0));
+    }
+  }
+  if (data.validUntil !== undefined) { sets.push("valid_until = ?"); params.push(data.validUntil || null); }
   if (data.leadSource !== undefined) { sets.push("lead_source = ?"); params.push(data.leadSource || "Walk-in"); }
 
   if (updatedBy) { sets.push("updated_by = ?"); params.push(updatedBy); }
@@ -74,56 +83,160 @@ const updateEnquiry = (id, data, updatedBy) => {
   db.prepare(`UPDATE enquiries SET ${sets.join(", ")} WHERE id = ?`).run(...params);
 };
 
+const normalizeQuoteLine = (o) => ({
+  productId: o.productId || null,
+  name: String(o.name || o.product || '').trim(),
+  source: o.source || (o.sqId || o.supplierId ? 'procurement' : 'inventory'),
+  legacy: (o.source == null || o.source === '') && !o.sqId,
+  supplierId: o.supplierId || null,
+  supplierName: o.supplierName || null,
+  costPrice: Number(o.costPrice) || 0,
+  quotedPrice: Number(o.quotedPrice) || 0,
+  quantity: Number(o.quantity) || 1,
+  sqId: o.sqId || null,
+  sqNumber: o.sqNumber || null,
+  poId: o.poId || null,
+  costSource: o.costSource === 'sq' ? 'sq' : 'manual'
+});
+
 const quoteEnquiry = (id, data, updatedBy) => {
-  const optionsJson = data.quoteOptions && Array.isArray(data.quoteOptions) ? JSON.stringify(data.quoteOptions) : null;
-  const firstOption = data.quoteOptions && Array.isArray(data.quoteOptions) && data.quoteOptions.length ? data.quoteOptions[0] : null;
-  const selSupplierId = firstOption ? firstOption.supplierId : data.supplierId;
-  const selCostPrice = firstOption ? Number(firstOption.costPrice) || 0 : Number(data.costPrice) || 0;
-  const selQuotedPrice = firstOption ? Number(firstOption.quotedPrice) || 0 : Number(data.quotedPrice);
-  const selQuantity = firstOption ? Number(firstOption.quantity) || 1 : Number(data.quantity) || 1;
+  const options = Array.isArray(data.quoteOptions) ? data.quoteOptions.map(normalizeQuoteLine) : [];
+  const firstOption = options.length ? options[0] : null;
+  const firstProcured = options.find(o => o.source === 'procurement' && o.supplierId);
+  const selSupplierId = firstProcured ? firstProcured.supplierId : (firstOption ? firstOption.supplierId : data.supplierId);
+  const selCostPrice = firstOption ? firstOption.costPrice : (Number(data.costPrice) || 0);
+  const selQuotedPrice = options.length ? options.reduce((s, o) => s + (Number(o.quotedPrice) * Number(o.quantity)), 0) : (Number(data.quotedPrice) || 0);
+  const selQuantity = firstOption ? firstOption.quantity : (Number(data.quantity) || 1);
   const selProductId = firstOption ? firstOption.productId : data.productId;
+  const selSqIds = options.filter(o => o.sqId).map(o => o.sqId);
 
   db.prepare(`
-    UPDATE enquiries SET status = 'quoted', supplier_id = ?, cost_price = ?, quoted_price = ?, quantity = ?, product_id = ?, quote_options = ?, notes = COALESCE(?, notes), updated_by = ? WHERE id = ?
-  `).run(selSupplierId, selCostPrice, selQuotedPrice, selQuantity, selProductId || null, optionsJson, data.notes || null, updatedBy, id);
+    UPDATE enquiries SET status = 'quoted', supplier_id = ?, cost_price = ?, quoted_price = ?, quantity = ?, product_id = ?, quote_options = ?, valid_until = COALESCE(?, valid_until), supplier_quote_id = ?, notes = COALESCE(?, notes), updated_by = ? WHERE id = ?
+  `).run(
+    selSupplierId || null,
+    selCostPrice,
+    selQuotedPrice,
+    selQuantity,
+    selProductId || null,
+    options.length ? JSON.stringify(options) : null,
+    data.validUntil || null,
+    selSqIds.length ? JSON.stringify(selSqIds) : null,
+    data.notes || null,
+    updatedBy,
+    id
+  );
 };
 
 const confirmEnquiry = (id, advanceData, updatedBy) => {
   const enquiry = getEnquiryById(id);
   if (!enquiry) return { error: "Enquiry not found" };
 
-  const poId = makeId("po");
-  const poSeq = db.prepare("SELECT COUNT(*) as c FROM purchase_orders").get().c + 1;
-  const poNumber = `PO-${String(poSeq).padStart(4, "0")}`;
+  let options = [];
+  try { options = enquiry.quote_options ? JSON.parse(enquiry.quote_options).map(normalizeQuoteLine) : []; } catch { options = []; }
+
+  if (!options.length) {
+    options = [{
+      productId: enquiry.product_id,
+      name: enquiry.product_interest || "Product",
+      source: enquiry.supplier_id ? 'procurement' : 'inventory',
+      supplierId: enquiry.supplier_id,
+      supplierName: enquiry.supplier_name || null,
+      costPrice: Number(enquiry.cost_price) || 0,
+      quotedPrice: Number(enquiry.quoted_price) || 0,
+      quantity: Number(enquiry.quantity) || 1,
+      sqId: null,
+      sqNumber: null,
+      poId: null
+    }];
+  }
+
+  const procuredLines = options.filter(o => o.source === 'procurement');
+  const missing = [];
+  for (const line of procuredLines) {
+    if (!line.supplierId) { missing.push(`${line.name || 'Item'}: no supplier selected`); continue; }
+    if (line.legacy) continue;
+    if (!line.sqId) {
+      if (!(Number(line.costPrice) > 0)) { missing.push(`${line.name || 'Item'}: supplier cost not entered yet`); }
+      continue;
+    }
+    const sq = db.prepare("SELECT id, status, quote_number FROM supplier_quotes WHERE id = ?").get(line.sqId);
+    if (!sq) { missing.push(`${line.name || 'Item'}: supplier quote not found`); }
+    else if (sq.status !== 'approved') { missing.push(`${line.name || 'Item'}: ${line.sqNumber || sq.quote_number} not approved yet`); }
+  }
+  if (missing.length) return { error: "Cannot confirm — resolve requisitions first", missing };
+
+  const purchaseOrderService = require("./purchaseOrderService");
+  const bySupplier = {};
+  for (const line of procuredLines) {
+    const key = line.supplierId;
+    (bySupplier[key] = bySupplier[key] || { supplierId: key, lines: [] }).lines.push(line);
+  }
+
   const today = nowIso().slice(0, 10);
-  const poTotal = (Number(enquiry.cost_price) || 0) * (Number(enquiry.quantity) || 1);
+  const poIds = [];
+  const poNumbers = [];
 
   const transaction = db.transaction(() => {
-    db.prepare(`INSERT INTO purchase_orders (id, po_number, supplier_id, po_date, expected_date, notes, status, total_amount, created_at) VALUES (?, ?, ?, ?, ?, ?, 'ordered', ?, ?)`)
-      .run(poId, poNumber, enquiry.supplier_id, today, null, `From enquiry ${enquiry.id}`, poTotal, nowIso());
-    db.prepare(`INSERT INTO purchase_order_items (id, po_id, product_id, product_name, quantity, unit_cost) VALUES (?, ?, ?, ?, ?, ?)`)
-      .run(makeId("poi"), poId, enquiry.product_id || null, enquiry.product_interest || "Product", Number(enquiry.quantity) || 1, Number(enquiry.cost_price) || 0);
+    for (const group of Object.values(bySupplier)) {
+      const po = purchaseOrderService.createPurchaseOrder({
+        supplierId: group.supplierId,
+        poDate: today,
+        notes: `From enquiry ${enquiry.id} (${enquiry.customer_name})`,
+        items: group.lines.map(l => {
+          const sq = l.sqId ? db.prepare("SELECT id, status FROM supplier_quotes WHERE id = ?").get(l.sqId) : null;
+          const sqItems = sq ? db.prepare("SELECT * FROM supplier_quote_items WHERE quote_id = ?").all(sq.id) : [];
+          const sqItem = sqItems.find(it =>
+            (it.product_id && l.productId && String(it.product_id) === String(l.productId)) ||
+            String(it.product_name || "").trim().toLowerCase() === String(l.name || "").trim().toLowerCase()
+          );
+          const unitCost = sqItem ? (Number(sqItem.unit_cost) || 0) : (Math.round((Number(l.costPrice) || 0) / (Number(l.quantity) || 1)) || 0);
+          return {
+            productId: l.productId,
+            productName: l.name || "Product",
+            quantity: l.quantity,
+            unitCost
+          };
+        })
+      });
+      poIds.push(po.id);
+      poNumbers.push(po.poNumber);
+      for (const line of group.lines) line.poId = po.id;
+    }
+
+    const supplierAdv = Number(advanceData.supplierAdvanceAmount) || 0;
+    const customerAdv = Number(advanceData.customerAdvanceAmount) || 0;
+
     db.prepare(`
         UPDATE enquiries
-        SET status = 'confirmed', po_id = ?,
+        SET status = 'confirmed', po_id = ?, po_ids = ?,
+            advance_amount = ?, advance_mode = ?, advance_date = ?,
             customer_advance_amount = ?, customer_advance_mode = ?, customer_advance_date = ?,
             supplier_advance_amount = ?, supplier_advance_mode = ?, supplier_advance_date = ?,
-            updated_by = ?
+            quote_options = ?, updated_by = ?
         WHERE id = ?
     `).run(
-        poId,
-        advanceData.customerAdvanceAmount, advanceData.customerAdvanceMode, advanceData.customerAdvanceDate,
-        advanceData.supplierAdvanceAmount, advanceData.supplierAdvanceMode, advanceData.supplierAdvanceDate,
+        poIds[0] || null,
+        poIds.length ? JSON.stringify(poIds) : null,
+        supplierAdv, advanceData.supplierAdvanceMode || "Cash", advanceData.supplierAdvanceDate || today,
+        customerAdv, advanceData.customerAdvanceMode || "Cash", advanceData.customerAdvanceDate || today,
+        supplierAdv, advanceData.supplierAdvanceMode || "Cash", advanceData.supplierAdvanceDate || today,
+        JSON.stringify(options),
         updatedBy, id
     );
   });
   transaction();
-  return { poId, poNumber };
+  return { poId: poIds[0] || null, poIds, poNumbers };
 };
 
 const deliverEnquiry = (id, paymentData, updatedBy) => {
   const { received, mode, date } = paymentData;
   db.prepare("UPDATE enquiries SET status = 'delivered', final_received = ?, final_mode = ?, final_date = ?, updated_by = ? WHERE id = ?")
+    .run(Number(received) || 0, mode || null, date || nowIso().slice(0, 10), updatedBy, id);
+};
+
+const recordPayment = (id, paymentData, updatedBy) => {
+  const { received, mode, date } = paymentData;
+  db.prepare("UPDATE enquiries SET final_received = ?, final_mode = ?, final_date = ?, updated_by = ? WHERE id = ?")
     .run(Number(received) || 0, mode || null, date || nowIso().slice(0, 10), updatedBy, id);
 };
 
@@ -139,5 +252,6 @@ module.exports = {
   quoteEnquiry,
   confirmEnquiry,
   deliverEnquiry,
+  recordPayment,
   deleteEnquiry
 };

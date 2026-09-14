@@ -64,6 +64,7 @@ const LoginPage = () => {
       setUser(res.data.user);
       const role = res.data.user.role;
       if (role === 'admin') navigate('/admin/dashboard');
+      else if (role === 'auditor') navigate('/auditor/dashboard');
       else if (role === 'sales') navigate('/sales/dashboard');
       else if (role === 'technician') navigate('/technician/dashboard');
       else navigate('/employee/dashboard');

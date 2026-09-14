@@ -26,11 +26,19 @@ const csrfValidate = (req, res, next) => {
   const cookieToken = req.cookies?.[CSRF_COOKIE_NAME];
   const headerToken = req.headers[CSRF_HEADER_NAME];
 
-  if (!cookieToken || !headerToken) {
+  // If no CSRF cookie exists (pre-migration session), skip validation.
+  // Once the user performs a login/refresh, the cookie will be set and
+  // validation will enforce the header match.
+  if (!cookieToken) {
+    return next();
+  }
+
+  if (!headerToken) {
     return res.status(403).json({ error: "CSRF token missing" });
   }
 
-  if (!crypto.timingSafeEqual(Buffer.from(cookieToken), Buffer.from(headerToken))) {
+  if (cookieToken.length !== headerToken.length ||
+      !crypto.timingSafeEqual(Buffer.from(cookieToken), Buffer.from(headerToken))) {
     return res.status(403).json({ error: "CSRF token invalid" });
   }
 

@@ -20,13 +20,18 @@ import {
   AlertTriangle,
   Info,
   CheckCircle2,
-  ChevronRight
+  ChevronRight,
+  IndianRupee,
+  RefreshCw,
+  ScrollText
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { notificationService, Notification } from '../services/notificationService';
+import { stockAlertService } from '../services/stockAlertService';
+import { wsClient } from '../utils/ws';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -40,12 +45,42 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
+  const queryClient = useQueryClient();
 
   const { data: notifications = [] } = useQuery({
     queryKey: ['notifications'],
     queryFn: () => notificationService.getNotifications(),
     refetchInterval: 30000, // Check every 30 seconds
     enabled: !!user
+  });
+
+  // Real-time WebSocket push for notifications
+  useEffect(() => {
+    if (!user) return;
+    wsClient.connect();
+
+    const onNotif = () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    };
+    const onStockAlert = () => {
+      queryClient.invalidateQueries({ queryKey: ['stock-alerts'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    };
+    wsClient.on('notifications', onNotif);
+    wsClient.on('stock-alert', onStockAlert);
+
+    return () => {
+      wsClient.off('notifications', onNotif);
+      wsClient.off('stock-alert', onStockAlert);
+    };
+  }, [user, queryClient]);
+
+  // Stock alerts for admin/sales
+  const { data: stockAlerts = [] } = useQuery({
+    queryKey: ['stock-alerts'],
+    queryFn: () => stockAlertService.getAlerts(true),
+    refetchInterval: 60000,
+    enabled: !!user && ['admin', 'sales'].includes(user.role),
   });
 
   // Close notif dropdown on click outside
@@ -65,17 +100,20 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   };
 
   const menuItems = [
-    { label: 'Dashboard', icon: LayoutDashboard, path: `/${user?.role}/dashboard`, roles: ['admin', 'sales', 'employee', 'technician', 'customer'] },
+    { label: 'Dashboard', icon: LayoutDashboard, path: `/${user?.role}/dashboard`, roles: ['admin', 'sales', 'employee', 'technician', 'customer', 'auditor'] },
     { label: 'Service Req', icon: Wrench, path: '/tickets', roles: ['admin', 'sales', 'employee', 'technician'] },
     { label: 'Lead', icon: Crosshair, path: '/enquiry', roles: ['admin', 'sales'] },
     { label: 'Quotations', icon: FileText, path: '/quotations', roles: ['admin', 'sales'] },
-    { label: 'Orders', icon: ClipboardList, path: '/orders', roles: ['admin', 'sales'] },
+    { label: 'Orders', icon: ClipboardList, path: '/orders', roles: ['admin', 'sales', 'auditor'] },
     { label: 'Purchase', icon: ShoppingBag, path: '/purchases', roles: ['admin', 'sales'] },
     { label: 'Challans', icon: Truck, path: '/challans', roles: ['admin', 'sales'] },
     { label: 'Parties', icon: Users, path: '/parties', roles: ['admin', 'sales'] },
     { label: 'Inventory', icon: Package, path: '/inventory', roles: ['admin', 'sales', 'employee'] },
-    { label: 'Reports', icon: FileText, path: '/reports', roles: ['admin', 'sales'] },
-    { label: 'Analytics', icon: BarChart3, path: '/analytics', roles: ['admin'] },
+    { label: 'Expenses', icon: IndianRupee, path: '/expenses', roles: ['admin', 'sales', 'auditor'] },
+    { label: 'Recurring', icon: RefreshCw, path: '/recurring-services', roles: ['admin', 'sales'] },
+    { label: 'Reports', icon: FileText, path: '/reports', roles: ['admin', 'sales', 'auditor'] },
+    { label: 'Analytics', icon: BarChart3, path: '/analytics', roles: ['admin', 'auditor'] },
+    { label: 'Audit Trail', icon: ScrollText, path: '/audit-log', roles: ['admin'] },
     { label: 'Settings', icon: Settings, path: '/settings', roles: ['admin'] },
   ].filter(item => item.roles.includes(user?.role || ''));
 
@@ -218,6 +256,20 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
 
         {/* Page Content */}
         <main className="flex-1 overflow-y-auto p-4 lg:p-8 custom-scrollbar">
+          {stockAlerts.length > 0 && (
+            <Link
+              to="/inventory"
+              className="flex items-center gap-3 bg-orange-50 border border-orange-200 text-orange-700 rounded-xl px-4 py-3 mb-4 hover:bg-orange-100 transition-colors"
+            >
+              <AlertTriangle className="h-5 w-5 shrink-0" />
+              <span className="text-sm font-semibold">
+                {stockAlerts.length} product{stockAlerts.length > 1 ? 's' : ''} low on stock
+              </span>
+              <span className="text-xs font-medium text-orange-600 ml-auto truncate">
+                {stockAlerts.slice(0, 3).map(a => a.product_name).join(', ')}{stockAlerts.length > 3 ? '...' : ''}
+              </span>
+            </Link>
+          )}
           {children}
         </main>
       </div>

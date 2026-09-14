@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Layout from '../components/Layout';
+import ReportPreviewModal from '../components/ReportPreviewModal';
+import PartySelectModal from '../components/PartySelectModal';
 import { reportService } from '../services/reportService';
 import {
   FileText,
@@ -15,7 +17,8 @@ import {
   CheckCircle2,
   AlertCircle,
   BarChart,
-  HardDrive
+  HardDrive,
+  FileSpreadsheet
 } from 'lucide-react';
 import { formatDateValue } from '../utils/helpers';
 import { toast } from '../utils/toast';
@@ -24,6 +27,12 @@ const ReportsPage = () => {
   const [activeTab, setTab] = useState<'generate' | 'archive'>('generate');
   const [selectedGroup, setSelectedGroup] = useState('all');
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
+  const [preview, setPreview] = useState<{ scope: string; start: string; end: string; party?: string } | null>(null);
+  const [previewData, setPreviewData] = useState<any>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [ledgerParty, setLedgerParty] = useState<any>(null);
+  const [ledgerAction, setLedgerAction] = useState<'preview' | 'pdf' | 'xlsx' | null>(null);
 
   const handleMonthSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
@@ -62,10 +71,39 @@ const ReportsPage = () => {
     },
   });
 
-  const handleGenerate = (scope: string) => {
-    reportService.generatePdf(scope, dateRange.start, dateRange.end);
+  const handleGenerate = (scope: string, party?: string, format: 'pdf' | 'xlsx' = 'pdf') => {
+    if (format === 'xlsx') reportService.generateExcel(scope, dateRange.start, dateRange.end, party);
+    else reportService.generatePdf(scope, dateRange.start, dateRange.end, party);
     // Invalidate archive after a short delay to allow background archiving
     setTimeout(() => queryClient.invalidateQueries({ queryKey: ['reports-archive'] }), 2000);
+  };
+
+  const openPreview = (scope: string, party?: string) => {
+    const ctx = { scope, start: dateRange.start, end: dateRange.end, party };
+    setPreview(ctx);
+    setPreviewData(null);
+    setPreviewError(null);
+    setPreviewLoading(true);
+    reportService.getData(scope, dateRange.start, dateRange.end, party)
+      .then((d) => setPreviewData(d))
+      .catch(() => setPreviewError('Failed to load report data'))
+      .finally(() => setPreviewLoading(false));
+  };
+
+  const onCardAction = (scope: string, action: 'preview' | 'pdf' | 'xlsx') => {
+    if (scope === 'customer_ledger') {
+      setLedgerAction(action);
+      return;
+    }
+    if (action === 'preview') openPreview(scope);
+    else handleGenerate(scope, undefined, action);
+  };
+
+  const handlePartySelect = (party: any) => {
+    setLedgerParty(party);
+    setLedgerAction(null);
+    if (ledgerAction === 'pdf' || ledgerAction === 'xlsx') handleGenerate('customer_ledger', party.id, ledgerAction);
+    else openPreview('customer_ledger', party.id);
   };
 
   const filteredReports = meta?.reports?.filter((r: any) =>
@@ -165,29 +203,71 @@ const ReportsPage = () => {
                 </div>
              </div>
 
-             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {ledgerParty && (
+                  <div className="flex items-center justify-between gap-3 px-5 py-3 bg-blue/5 border border-blue/10 rounded-2xl lg:col-span-3">
+                    <p className="text-sm font-bold text-navy">
+                      Party Ledger target: <span className="text-blue">{ledgerParty.name}</span>
+                      <span className="text-text-soft font-semibold text-xs ml-2">
+                        {ledgerParty.mobile ? `• ${ledgerParty.mobile}` : ''}
+                      </span>
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => onCardAction('customer_ledger', 'preview')}
+                        className="text-xs font-bold text-blue hover:underline"
+                      >
+                        Change
+                      </button>
+                      <button
+                        onClick={() => setLedgerParty(null)}
+                        className="px-3 py-1.5 text-xs font-bold text-text-soft bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {filteredReports?.map((r: any) => (
                    <div key={r.id} className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm hover:shadow-md transition-all group flex flex-col justify-between h-48">
-                      <div>
-                         <div className="flex justify-between items-start mb-3">
+                      <button
+                        onClick={() => onCardAction(r.id, 'preview')}
+                        className="text-left group/card flex flex-col gap-3 flex-1 cursor-pointer"
+                      >
+                         <div className="flex justify-between items-start">
                             <div className="p-2.5 bg-soft rounded-xl text-blue">
                                <FileText className="h-5 w-5" />
                             </div>
                             <span className="text-[10px] font-bold text-text-soft uppercase bg-gray-50 px-2 py-0.5 rounded-md border border-gray-100">{r.group}</span>
                          </div>
-                         <h3 className="font-bold text-navy">{r.title}</h3>
-                         <p className="text-xs text-text-soft mt-1 line-clamp-2 leading-relaxed">{r.desc}</p>
-                      </div>
-                      <button
-                        onClick={() => handleGenerate(r.id)}
-                        className="w-full mt-4 flex items-center justify-between text-blue font-bold text-sm bg-soft/50 py-2 px-4 rounded-xl hover:bg-blue hover:text-white transition-all group/btn"
-                      >
-                        <span>Generate PDF</span>
-                        <ChevronRight className="h-4 w-4 group-hover/btn:translate-x-1 transition-transform" />
+                         <div>
+                            <h3 className="font-bold text-navy">{r.title}</h3>
+                            <p className="text-xs text-text-soft mt-1 line-clamp-2 leading-relaxed">{r.desc}</p>
+                         </div>
+                         <span className="text-[10px] font-bold text-blue uppercase tracking-widest mt-auto inline-flex items-center gap-1">
+                            <ChevronRight className="h-3 w-3 group-hover/card:translate-x-1 transition-transform" />
+                            {r.id === 'customer_ledger' ? 'Select Party' : 'View Preview'}
+                         </span>
                       </button>
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onCardAction(r.id, 'pdf'); }}
+                          className="flex items-center justify-center gap-2 text-blue font-bold text-sm bg-soft/50 py-2 px-3 rounded-xl hover:bg-blue hover:text-white transition-all group/btn"
+                        >
+                          <FileText className="h-4 w-4" />
+                          <span className="text-xs font-black uppercase tracking-widest">PDF</span>
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onCardAction(r.id, 'xlsx'); }}
+                          className="flex items-center justify-center gap-2 text-[#1a7f37] font-bold text-sm bg-emerald-500/10 py-2 px-3 rounded-xl hover:bg-emerald-600 hover:text-white transition-all group/btn"
+                        >
+                          <FileSpreadsheet className="h-4 w-4" />
+                          <span className="text-xs font-black uppercase tracking-widest">Excel</span>
+                        </button>
+                      </div>
                    </div>
                 ))}
-             </div>
+              </div>
           </div>
         ) : (
           <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden animate-in fade-in duration-300">
@@ -209,13 +289,13 @@ const ReportsPage = () => {
                          <tr key={a.id} className="group hover:bg-soft/20 transition-colors">
                             <td className="px-8 py-5">
                                <div className="flex items-center gap-4">
-                                  <div className="p-2 bg-gray-50 rounded-lg text-text-soft group-hover:bg-blue/5 group-hover:text-blue transition-colors">
-                                     <FileText className="h-5 w-5" />
-                                  </div>
-                                  <div>
-                                     <p className="text-sm font-bold text-navy">{a.title}</p>
-                                     <p className="text-[10px] text-text-soft font-medium uppercase tracking-tight">{a.scope.replace('_', ' ')} • PDF</p>
-                                  </div>
+<div className="p-2 bg-gray-50 rounded-lg text-text-soft group-hover:bg-blue/5 group-hover:text-blue transition-colors">
+                                      {a.format === 'xlsx' ? <FileSpreadsheet className="h-5 w-5" /> : <FileText className="h-5 w-5" />}
+                                   </div>
+                                   <div>
+                                      <p className="text-sm font-bold text-navy">{a.title}</p>
+                                      <p className="text-[10px] text-text-soft font-medium uppercase tracking-tight">{a.scope.replace('_', ' ')} • {(a.format || 'pdf').toUpperCase()}</p>
+                                   </div>
                                </div>
                             </td>
                             <td className="px-8 py-5">
@@ -262,9 +342,28 @@ const ReportsPage = () => {
                    <p className="text-text-soft text-sm max-w-xs mx-auto">Reports you generate will automatically be saved here for future reference.</p>
                 </div>
              )}
-          </div>
-        )}
+           </div>
+         )}
       </div>
+
+      {preview && (
+        <ReportPreviewModal
+          report={preview}
+          data={previewData}
+          loading={previewLoading}
+          error={previewError}
+          onGenerate={() => handleGenerate(preview.scope, preview.party, 'pdf')}
+          onGenerateExcel={() => handleGenerate(preview.scope, preview.party, 'xlsx')}
+          onClose={() => setPreview(null)}
+        />
+      )}
+
+      {ledgerAction && (
+        <PartySelectModal
+          onSelect={handlePartySelect}
+          onClose={() => setLedgerAction(null)}
+        />
+      )}
     </Layout>
   );
 };

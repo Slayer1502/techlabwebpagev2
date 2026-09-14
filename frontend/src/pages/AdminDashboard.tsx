@@ -39,6 +39,14 @@ const AdminDashboard = () => {
     },
   });
 
+  const { data: slaData } = useQuery({
+    queryKey: ['sla-status'],
+    queryFn: async () => {
+      const res = await api.get('/admin/sla-status');
+      return res.data;
+    },
+  });
+
   if (isLoading) {
     return (
       <Layout>
@@ -151,6 +159,50 @@ const AdminDashboard = () => {
           </div>
         </div>
 
+        {/* SLA Health Cards */}
+        <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm p-8 space-y-6">
+          <div className="flex justify-between items-center pb-4 border-b">
+            <div>
+              <h2 className="text-lg font-bold text-navy flex items-center gap-2">
+                <Clock className="h-5 w-5 text-blue" />
+                Service Level Agreement Health
+              </h2>
+              <p className="text-xs text-text-soft font-medium">
+                Live SLA compliance across open service requests
+              </p>
+            </div>
+            <button
+              onClick={() => navigate('/tickets')}
+              className="text-xs font-bold text-blue hover:underline flex items-center gap-1"
+            >
+              Open Tickets <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+            <div className="p-5 bg-green-50 rounded-2xl border border-green-100">
+              <p className="text-[10px] font-bold text-green-700 uppercase tracking-wider">On Track</p>
+              <p className="text-3xl font-black text-green-700 mt-1">{slaData?.summary?.onTrack ?? 0}</p>
+              <p className="text-[10px] text-green-600 font-semibold mt-0.5">Within resolution deadline</p>
+            </div>
+            <div className="p-5 bg-amber-50 rounded-2xl border border-amber-100">
+              <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">At Risk</p>
+              <p className="text-3xl font-black text-amber-700 mt-1">{slaData?.summary?.atRisk ?? 0}</p>
+              <p className="text-[10px] text-amber-600 font-semibold mt-0.5">Due within next 24h</p>
+            </div>
+            <div className="p-5 bg-red-50 rounded-2xl border border-red-100">
+              <p className="text-[10px] font-bold text-red-700 uppercase tracking-wider">Breached</p>
+              <p className="text-3xl font-black text-red-700 mt-1">{slaData?.summary?.breached ?? 0}</p>
+              <p className="text-[10px] text-red-600 font-semibold mt-0.5">Past resolution deadline</p>
+            </div>
+            <div className="p-5 bg-blue-50 rounded-2xl border border-blue-100">
+              <p className="text-[10px] font-bold text-blue-700 uppercase tracking-wider">Open Requests</p>
+              <p className="text-3xl font-black text-blue-700 mt-1">{slaData?.summary?.open ?? 0}</p>
+              <p className="text-[10px] text-blue-600 font-semibold mt-0.5">Total active service requests</p>
+            </div>
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Main Area: Staff & Activity */}
           <div className="lg:col-span-2 space-y-8">
@@ -224,7 +276,7 @@ const AdminDashboard = () => {
                   <tbody className="divide-y">
                     {orders?.slice(0, 5).map((o: any) => (
                       <tr key={o.id} className="text-sm hover:bg-soft/30 transition-colors">
-                        <td className="px-4 py-4 font-bold text-navy">#{String(o.id).slice(-6)}</td>
+                        <td className="px-4 py-4 font-bold text-navy">#{o.bill_number || String(o.id).slice(-6)}</td>
                         <td className="px-4 py-4 font-semibold text-navy">{o.customer_name}</td>
                         <td className="px-4 py-4 font-black text-navy">{formatCurrencyValue(o.total_amount)}</td>
                         <td className="px-4 py-4">

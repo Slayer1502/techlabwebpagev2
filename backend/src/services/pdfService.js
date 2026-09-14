@@ -58,8 +58,9 @@ const generateOrderInvoice = async (orderId) => {
     doc.fillColor(PDF_COLORS.TEXT).fontSize(9).font("Helvetica-Bold").text(`GSTIN: ${bizGstin}`, 48, 111);
   }
 
+  const orderBillNo = order.bill_number || order.id;
   doc.fillColor(PDF_COLORS.BLUE).fontSize(16).font("Helvetica-Bold").text(docTitle, 48, 50, { align: "right" });
-  doc.fillColor(PDF_COLORS.TEXT).fontSize(10).font("Helvetica").text(`No: ${order.id.slice(-6).toUpperCase()}`, 48, 75, { align: "right" });
+  doc.fillColor(PDF_COLORS.TEXT).fontSize(10).font("Helvetica").text(`No: ${orderBillNo}`, 48, 75, { align: "right" });
   doc.text(`Date: ${formatDateValue(order.created_at)}`, 48, 87, { align: "right" });
 
   const headerBottom = (isGst && bizGstin) ? 130 : 120;
@@ -244,7 +245,7 @@ const generateServiceBill = async (requestId) => {
   doc.text(`Ph: ${bizPhone} | Email: ${bizEmail}`, 48, 99);
 
   const isGst = (request.gst_total || 0) > 0;
-  const showGstin = (isGst || request.bill_status === 'billed') && bizGstin;
+  const showGstin = isGst && bizGstin;
   if (showGstin) {
     doc.fillColor(PDF_COLORS.TEXT).fontSize(9).font("Helvetica-Bold").text(`GSTIN: ${bizGstin}`, 48, 111);
   }
@@ -273,20 +274,24 @@ const generateServiceBill = async (requestId) => {
   doc.moveDown(5);
   const tableTop = doc.y;
   doc.rect(48, tableTop, 500, 25).fill(PDF_COLORS.NAVY);
-  doc.fillColor("#ffffff").fontSize(10).font("Helvetica-Bold").text("Description of Service / Parts", 58, tableTop + 8);
+  doc.fillColor("#ffffff").fontSize(9).font("Helvetica-Bold").text("Description of Service / Parts", 58, tableTop + 8);
+  doc.text("Qty", 280, tableTop + 8, { width: 45, align: "right" });
+  doc.text("Rate (Rs.)", 337, tableTop + 8, { width: 70, align: "right" });
   doc.text("Amount (INR)", 447, tableTop + 8, { width: 90, align: "right" });
 
   let itemY = tableTop + 40;
+  doc.strokeColor(PDF_COLORS.GRAY).lineWidth(0.5).moveTo(48, itemY - 13).lineTo(547, itemY - 13).stroke();
   billItems.forEach((it) => {
     const qty = Number(it.qty) || 1;
     const rate = Number(it.rate) || 0;
     const amount = Number(it.amount) || 0;
-    let desc = String(it.desc || it.description || "");
-    if (rate > 0) desc += (desc ? " " : "") + `(${qty} x Rs.${rate})`;
-    else if (qty > 1) desc += (desc ? " " : "") + `(${qty} x)`;
-    doc.fillColor(PDF_COLORS.TEXT).fontSize(10).font("Helvetica").text(desc || "-", 58, itemY, { width: 380 });
-    doc.font("Helvetica-Bold").text(formatCurrencyValue(amount), 447, itemY, { width: 90, align: "right" });
+    const desc = String(it.desc || it.description || "") || "-";
+    doc.fillColor(PDF_COLORS.TEXT).fontSize(10).font("Helvetica").text(desc, 58, itemY, { width: 218 });
+    doc.font("Helvetica-Bold").text(String(qty), 280, itemY, { width: 45, align: "right" });
+    doc.text(rate > 0 ? String(rate) : "-", 337, itemY, { width: 70, align: "right" });
+    doc.text(formatCurrencyValue(amount), 447, itemY, { width: 90, align: "right" });
     itemY += 22;
+    doc.strokeColor(PDF_COLORS.GRAY).lineWidth(0.5).moveTo(48, itemY - 13).lineTo(547, itemY - 13).stroke();
   });
   doc.y = itemY;
 
@@ -421,16 +426,27 @@ const generateSurveyPdf = async (requestId) => {
   const rows = [];
   const cableUnit = (type) => (type === "Cat6" || type === "Cat6a") ? "Box" : (type === "Power Cable" || type === "HDMI") ? "Mtrs" : "-";
   cameras.forEach((c) => {
+    const loc = c.location || "";
+    const mountingNote = c.mounting && c.mounting !== "Select" ? c.mounting : "";
+    const notes = [c.technology, c.resolution, mountingNote, loc].filter(Boolean).join(", ") || "-";
     rows.push({
       part: `CCTV Camera (${c.formFactor || c.type || "Camera"})`,
       qty: Number(c.count) || 1,
-      notes: [c.technology, c.resolution].filter(Boolean).join(", ") || "-",
+      notes,
     });
   });
   if (nvrDvr.needed) {
     rows.push({ part: `CCTV Recorder (${nvrDvr.type || "NVR/DVR"})`, qty: 1, notes: `${nvrDvr.channels || 0} Channel${nvrDvr.brand ? " - " + nvrDvr.brand : ""}` });
   }
-  if (nvrDvr.power) {
+  const powerUnits = Array.isArray(nvrDvr.powerUnits) ? nvrDvr.powerUnits : [];
+  if (powerUnits.length) {
+    powerUnits.forEach((p) => {
+      const details = [p.location, p.brand].filter(Boolean).join(" - ");
+      const note = `${p.type || "Power"} (${p.ports || 0} ports)${details ? " @ " + details : ""}`;
+      rows.push({ part: `Power Supply (${p.type || "Power"})`, qty: Number(p.qty) || 1, notes: note });
+    });
+  } else if (nvrDvr.power) {
+    // Back-compat for older surveys with a single flat power block
     rows.push({ part: `Power Supply (${nvrDvr.power.type || "Power"})`, qty: 1, notes: `${nvrDvr.power.channels || 0} Channel${nvrDvr.power.brand ? " - " + nvrDvr.power.brand : ""}` });
   }
   cables.forEach((c) => {
@@ -519,6 +535,11 @@ const generateChallanPdf = async (challanId) => {
   if (primaryBank && primaryBank.upi_id && primaryBank.show_qr && challan.billing_status !== 'billed') {
     const upiUrl = `upi://pay?pa=${primaryBank.upi_id}&pn=${encodeURIComponent(bizName)}&am=${challan.total_value}&cu=INR`;
     qrBuffer = await fetchQrCode(upiUrl);
+  }
+
+  let reviewQrBuffer = null;
+  if (settings.google_review_url) {
+    reviewQrBuffer = await fetchQrCode(settings.google_review_url);
   }
 
   const doc = new PDFDocument({ size: "A4", margin: 48 });
@@ -623,6 +644,210 @@ const generateChallanPdf = async (challanId) => {
   return doc;
 };
 
+const generateQuotationPdf = async (quotationId) => {
+  const quotation = db.prepare("SELECT * FROM sales_quotations WHERE id = ?").get(quotationId);
+  if (!quotation) throw new Error("Quotation not found");
+  const items = db.prepare("SELECT product_name, quantity, unit_price FROM sales_quotation_items WHERE quote_id = ? ORDER BY rowid").all(quotationId);
+
+  const settings = getBusinessSettingsMap();
+  const bizName = settings.business_name || 'TECHLAB';
+  const bizAddr = settings.business_address || 'Casa Layout, Karur - 639001, TN';
+  const bizPhone = settings.business_phone || '+91 94888-0-9897';
+  const bizEmail = settings.business_email || 'service@techlab.in';
+  const bizGstin = settings.gstin || '';
+
+  const doc = new PDFDocument({ size: "A4", margin: 48 });
+
+  doc.fillColor(PDF_COLORS.NAVY).fontSize(24).font("Helvetica-Bold").text(bizName, 48, 50);
+  doc.fillColor(PDF_COLORS.TEXT_SOFT).fontSize(9).font("Helvetica").text("Computers, Laptops, CCTV & IT Solutions", 48, 75);
+  doc.text(bizAddr, 48, 87);
+  doc.text(`Ph: ${bizPhone} | Email: ${bizEmail}`, 48, 99);
+  if (bizGstin) doc.fillColor(PDF_COLORS.TEXT).fontSize(9).font("Helvetica-Bold").text(`GSTIN: ${bizGstin}`, 48, 111);
+
+  doc.fillColor(PDF_COLORS.BLUE).fontSize(16).font("Helvetica-Bold").text("QUOTATION", 48, 50, { align: "right" });
+  doc.fillColor(PDF_COLORS.TEXT).fontSize(10).font("Helvetica").text(`Quotation No: ${quotation.quote_number}`, 48, 75, { align: "right" });
+  doc.text(`Date: ${formatDateValue(quotation.quote_date)}`, 48, 87, { align: "right" });
+  if (quotation.valid_until) doc.text(`Valid until: ${formatDateValue(quotation.valid_until)}`, 48, 99, { align: "right" });
+
+  const headerBottom = bizGstin ? 130 : 120;
+  doc.strokeColor(PDF_COLORS.NAVY).lineWidth(2).moveTo(48, headerBottom).lineTo(547, headerBottom).stroke();
+
+  doc.moveDown(3);
+  const customerStartY = doc.y;
+  doc.rect(48, customerStartY, 250, 70).fill(PDF_COLORS.LIGHT_GRAY).stroke(PDF_COLORS.GRAY);
+  doc.fillColor(PDF_COLORS.NAVY).fontSize(10).font("Helvetica-Bold").text("CUSTOMER:", 58, customerStartY + 10);
+  doc.fillColor(PDF_COLORS.TEXT).fontSize(11).text(quotation.customer_name || "-", 58, customerStartY + 25);
+  doc.fontSize(10).font("Helvetica").text(`Mobile: ${quotation.customer_mobile || "-"}`, 58, customerStartY + 40);
+  if (quotation.customer_address) doc.fontSize(9).text(quotation.customer_address, 58, customerStartY + 53);
+
+  doc.moveDown(5);
+  const tableTop = doc.y;
+  doc.rect(48, tableTop, 500, 25).fill(PDF_COLORS.NAVY);
+  doc.fillColor("#ffffff").fontSize(10).font("Helvetica-Bold").text("#", 58, tableTop + 8, { width: 30 });
+  doc.text("Description of Goods / Services", 95, tableTop + 8, { width: 230 });
+  doc.text("Qty", 325, tableTop + 8, { width: 50, align: "right" });
+  doc.text("Rate", 385, tableTop + 8, { width: 70, align: "right" });
+  doc.text("Amount", 465, tableTop + 8, { width: 72, align: "right" });
+
+  let itemY = tableTop + 40;
+  const pageHeight = doc.page.height - 150;
+
+  items.forEach((it, idx) => {
+    if (itemY > pageHeight) {
+      doc.addPage();
+      itemY = 50;
+      doc.rect(48, itemY, 500, 25).fill(PDF_COLORS.NAVY);
+      doc.fillColor("#ffffff").fontSize(10).font("Helvetica-Bold").text("#", 58, itemY + 8, { width: 30 });
+      doc.text("Description of Goods / Services", 95, itemY + 8, { width: 230 });
+      doc.text("Qty", 325, itemY + 8, { width: 50, align: "right" });
+      doc.text("Rate", 385, itemY + 8, { width: 70, align: "right" });
+      doc.text("Amount", 465, itemY + 8, { width: 72, align: "right" });
+      itemY += 40;
+    }
+
+    const lineTotal = it.unit_price * it.quantity;
+    doc.fillColor(PDF_COLORS.TEXT).fontSize(9).font("Helvetica").text(String(idx + 1), 58, itemY, { width: 30 });
+    doc.text(String(it.product_name || "-"), 95, itemY, { width: 230 });
+    doc.text(String(it.quantity), 325, itemY, { width: 50, align: "right" });
+    doc.text(formatCurrencyValue(it.unit_price).replace("Rs. ", ""), 385, itemY, { width: 70, align: "right" });
+    doc.font("Helvetica-Bold").text(formatCurrencyValue(lineTotal).replace("Rs. ", ""), 465, itemY, { width: 72, align: "right" });
+    doc.strokeColor(PDF_COLORS.GRAY).lineWidth(0.5).moveTo(48, itemY + 18).lineTo(547, itemY + 18).stroke();
+    itemY += 22;
+  });
+
+  doc.rect(48, itemY, 500, 20).fill(PDF_COLORS.LIGHT_GRAY);
+  doc.fillColor(PDF_COLORS.NAVY).fontSize(10).font("Helvetica-Bold").text("TOTAL", 58, itemY + 6);
+  doc.text(formatCurrencyValue(quotation.total_amount).replace("Rs. ", ""), 465, itemY + 6, { width: 72, align: "right" });
+  itemY += 30;
+
+  doc.y = itemY;
+
+  if (quotation.notes) {
+    doc.fillColor(PDF_COLORS.TEXT).fontSize(9).font("Helvetica").text(`Notes: ${quotation.notes}`, 48, doc.y + 20);
+  }
+
+  doc.fontSize(9).font("Helvetica-Oblique").fillColor(PDF_COLORS.TEXT_SOFT).text(
+    "This quotation is valid until the date shown above. Prices include applicable taxes unless stated otherwise. Subject to Karur jurisdiction.",
+    48, doc.y + 20
+  );
+
+  drawPdfFooter(doc);
+
+  return doc;
+};
+
+const generateSupplierQuotePdf = async (quoteId) => {
+  const quote = db.prepare("SELECT sq.*, pt.name as supplier_name FROM supplier_quotes sq LEFT JOIN parties pt ON sq.supplier_id = pt.id WHERE sq.id = ?").get(quoteId);
+  if (!quote) throw new Error("Quote not found");
+  const items = db.prepare("SELECT product_name, quantity, unit_cost, brand, model FROM supplier_quote_items WHERE quote_id = ? ORDER BY rowid").all(quoteId);
+  const supplier = quote.supplier_id ? db.prepare("SELECT * FROM parties WHERE id = ?").get(quote.supplier_id) : null;
+
+  const settings = getBusinessSettingsMap();
+  const bizName = settings.business_name || 'TECHLAB';
+  const bizAddr = settings.business_address || 'Casa Layout, Karur - 639001, TN';
+  const bizPhone = settings.business_phone || '+91 94888-0-9897';
+  const bizEmail = settings.business_email || 'service@techlab.in';
+  const bizGstin = settings.gstin || '';
+
+  const isRfq = Boolean(quote.service_request_id);
+  const serviceRef = isRfq ? db.prepare("SELECT id, customer_name, device_type FROM service_requests WHERE id = ?").get(quote.service_request_id) : null;
+
+  const doc = new PDFDocument({ size: "A4", margin: 48 });
+
+  doc.fillColor(PDF_COLORS.NAVY).fontSize(24).font("Helvetica-Bold").text(bizName, 48, 50);
+  doc.fillColor(PDF_COLORS.TEXT_SOFT).fontSize(9).font("Helvetica").text("Computers, Laptops, CCTV & IT Solutions", 48, 75);
+  doc.text(bizAddr, 48, 87);
+  doc.text(`Ph: ${bizPhone} | Email: ${bizEmail}`, 48, 99);
+  if (bizGstin) doc.fillColor(PDF_COLORS.TEXT).fontSize(9).font("Helvetica-Bold").text(`GSTIN: ${bizGstin}`, 48, 111);
+
+  doc.fillColor(PDF_COLORS.BLUE).fontSize(16).font("Helvetica-Bold").text(isRfq ? "REQUEST FOR QUOTATION" : "SUPPLIER QUOTE", 48, 50, { align: "right" });
+  doc.fillColor(PDF_COLORS.TEXT).fontSize(10).font("Helvetica").text(`${isRfq ? "RFQ" : "Quote"} No: ${quote.quote_number}`, 48, 75, { align: "right" });
+  doc.text(`Date: ${formatDateValue(quote.quote_date)}`, 48, 87, { align: "right" });
+  if (quote.valid_until) doc.text(`Valid until: ${formatDateValue(quote.valid_until)}`, 48, 99, { align: "right" });
+  if (serviceRef) doc.text(`Service: ${serviceRef.id}`, 48, 99, { align: "right" });
+  doc.fillColor(quote.status === 'approved' ? PDF_COLORS.SUCCESS : quote.status === 'rejected' ? PDF_COLORS.DANGER : "#b45309")
+    .fontSize(10).font("Helvetica-Bold").text(`Status: ${(quote.status || 'pending').toUpperCase()}`, 48, 113, { align: "right" });
+
+  const headerBottom = bizGstin ? 138 : 128;
+  doc.fillColor(PDF_COLORS.NAVY).stroke().lineWidth(2).moveTo(48, headerBottom).lineTo(547, headerBottom).stroke();
+
+  doc.moveDown(3);
+  const supplierStartY = doc.y;
+  doc.rect(48, supplierStartY, 250, 70).fill(PDF_COLORS.LIGHT_GRAY).stroke(PDF_COLORS.GRAY);
+  doc.fillColor(PDF_COLORS.NAVY).fontSize(10).font("Helvetica-Bold").text("SUPPLIER:", 58, supplierStartY + 10);
+  doc.fillColor(PDF_COLORS.TEXT).fontSize(11).text(quote.supplier_name || String(quote.supplier_id || "-"), 58, supplierStartY + 25);
+  if (supplier?.mobile) doc.fontSize(10).font("Helvetica").text(`Mobile: ${supplier.mobile}`, 58, supplierStartY + 40);
+  if (supplier?.address) doc.fontSize(9).text(supplier.address, 58, supplierStartY + 53);
+  if (serviceRef) {
+    doc.rect(310, supplierStartY, 237, 70).fill("#eef2ff").stroke(PDF_COLORS.GRAY);
+    doc.fillColor(PDF_COLORS.NAVY).fontSize(10).font("Helvetica-Bold").text("FOR SERVICE REQUEST", 320, supplierStartY + 10);
+    doc.fillColor(PDF_COLORS.TEXT).fontSize(10).text(`Job: ${serviceRef.id}`, 320, supplierStartY + 25);
+    if (serviceRef.customer_name) doc.fontSize(9).text(`Customer: ${serviceRef.customer_name}`, 320, supplierStartY + 39);
+    if (serviceRef.device_type) doc.fontSize(9).text(`Device: ${serviceRef.device_type}`, 320, supplierStartY + 51);
+  }
+
+  doc.moveDown(5);
+  const tableTop = doc.y;
+  doc.rect(48, tableTop, 500, 25).fill(PDF_COLORS.NAVY);
+  doc.fillColor("#ffffff").fontSize(10).font("Helvetica-Bold").text("#", 58, tableTop + 8, { width: 30 });
+  doc.text("Description", 95, tableTop + 8, { width: 230 });
+  doc.text("Qty", 325, tableTop + 8, { width: 50, align: "right" });
+  if (!isRfq) doc.text("Unit Cost", 385, tableTop + 8, { width: 70, align: "right" });
+  if (!isRfq) doc.text("Amount", 465, tableTop + 8, { width: 72, align: "right" });
+
+  let itemY = tableTop + 40;
+  const pageHeight = doc.page.height - 150;
+
+  items.forEach((it, idx) => {
+    if (itemY > pageHeight) {
+      doc.addPage();
+      itemY = 50;
+      doc.rect(48, itemY, 500, 25).fill(PDF_COLORS.NAVY);
+      doc.fillColor("#ffffff").fontSize(10).font("Helvetica-Bold").text("#", 58, itemY + 8, { width: 30 });
+      doc.text("Description", 95, itemY + 8, { width: 230 });
+      doc.text("Qty", 325, itemY + 8, { width: 50, align: "right" });
+      if (!isRfq) doc.text("Unit Cost", 385, itemY + 8, { width: 70, align: "right" });
+      if (!isRfq) doc.text("Amount", 465, itemY + 8, { width: 72, align: "right" });
+      itemY += 40;
+    }
+
+    const lineTotal = it.unit_cost * it.quantity;
+    doc.fillColor(PDF_COLORS.TEXT).fontSize(9).font("Helvetica").text(String(idx + 1), 58, itemY, { width: 30 });
+    doc.text(String(it.product_name || "-"), 95, itemY, { width: 230 });
+    const detail = [it.brand && `Brand: ${it.brand}`, it.model && `Model: ${it.model}`].filter(Boolean).join(" · ");
+    if (detail) {
+      doc.fillColor(PDF_COLORS.TEXT_SOFT).fontSize(8).font("Helvetica").text(detail, 95, itemY + 11, { width: 230 });
+    }
+    doc.fillColor(PDF_COLORS.TEXT).fontSize(9).font("Helvetica").text(String(it.quantity), 325, itemY, { width: 50, align: "right" });
+    if (!isRfq) {
+      doc.text(formatCurrencyValue(it.unit_cost).replace("Rs. ", ""), 385, itemY, { width: 70, align: "right" });
+      doc.font("Helvetica-Bold").text(formatCurrencyValue(lineTotal).replace("Rs. ", ""), 465, itemY, { width: 72, align: "right" });
+    }
+    doc.strokeColor(PDF_COLORS.GRAY).lineWidth(0.5).moveTo(48, itemY + 31).lineTo(547, itemY + 31).stroke();
+    itemY += 35;
+  });
+
+  if (isRfq) {
+    doc.fillColor(PDF_COLORS.TEXT_SOFT).fontSize(9).font("Helvetica").text("Kindly quote your best rates for the above items along with expected availability.", 48, itemY + 10, { width: 500 });
+    itemY += 30;
+  } else {
+    doc.rect(48, itemY, 500, 20).fill(PDF_COLORS.LIGHT_GRAY);
+    doc.fillColor(PDF_COLORS.NAVY).fontSize(10).font("Helvetica-Bold").text("TOTAL", 58, itemY + 6);
+    doc.text(formatCurrencyValue(quote.total_amount).replace("Rs. ", ""), 465, itemY + 6, { width: 72, align: "right" });
+    itemY += 30;
+  }
+
+  doc.y = itemY;
+
+  if (quote.notes) {
+    doc.fillColor(PDF_COLORS.TEXT).fontSize(9).font("Helvetica").text(`Notes: ${quote.notes}`, 48, doc.y + 20);
+  }
+
+  drawPdfFooter(doc);
+
+  return doc;
+};
+
 const generateCompanyProfilePdf = async () => {
   const settingsRows = db.prepare("SELECT key, value FROM business_settings").all();
   const settings = {};
@@ -679,5 +904,7 @@ module.exports = {
   generateServiceBill,
   generateSurveyPdf,
   generateChallanPdf,
+  generateQuotationPdf,
+  generateSupplierQuotePdf,
   generateCompanyProfilePdf
 };

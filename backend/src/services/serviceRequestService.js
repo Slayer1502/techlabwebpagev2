@@ -1,5 +1,6 @@
 const { db, makeId, nowIso } = require("../../db");
 const { syncCustomerToParties } = require("./customerService");
+const slaService = require("./slaService");
 
 const createServiceRequestRecord = ({
   customerName,
@@ -15,6 +16,7 @@ const createServiceRequestRecord = ({
   status,
   estimatedCost,
   createdAt,
+  deviceIntake,
 }) => {
   syncCustomerToParties(customerName, mobile);
   const reqStatus = status || "Pending";
@@ -23,19 +25,28 @@ const createServiceRequestRecord = ({
   const servPerson = servicePerson || "Not scheduled";
   const schedDate = reqStatus === "Scheduled" ? preferredDate : "";
 
+  let intakeJson = null;
+  let finalSubjectName = requestSubjectName || "";
+  if (deviceIntake && typeof deviceIntake === "object") {
+    intakeJson = JSON.stringify(deviceIntake);
+    if (!finalSubjectName && deviceIntake.brand && deviceIntake.model) {
+      finalSubjectName = `${deviceIntake.brand} ${deviceIntake.model}`;
+    }
+  }
+
   const id = makeId("service");
   db.prepare(`
     INSERT INTO service_requests (
       id, customer_name, customer_mobile, device_type, request_subject_type, request_subject_name, issue, preferred_date,
-      assigned_employee_id, assigned_employee_name, service_person, scheduled_date, status, created_at, estimated_cost
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
+      assigned_employee_id, assigned_employee_name, service_person, scheduled_date, status, created_at, estimated_cost, device_intake
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `  ).run(
     id,
     customerName,
     mobile,
     deviceType,
     requestSubjectType || "general-service",
-    requestSubjectName || "",
+    finalSubjectName,
     issue,
     preferredDate,
     empId,
@@ -44,8 +55,12 @@ const createServiceRequestRecord = ({
     schedDate,
     reqStatus,
     createdAt || nowIso().slice(0, 10),
-    estimatedCost || 0
+    estimatedCost || 0,
+    intakeJson
   );
+  try {
+    slaService.applySlaOnCreate(id, { deviceType, createdAt: createdAt || nowIso() });
+  } catch (e) {}
   return id;
 };
 
@@ -61,6 +76,17 @@ const getServiceRequestById = (id) => {
   ).all(id).map((d) => d.id);
   request.linked_dc_ids = dcList;
   return request;
+};
+
+const listRequestsForLinking = (search = "", limit = 50) => {
+  const like = `%${search}%`;
+  return db.prepare(`
+    SELECT id, customer_name, customer_mobile, device_type, issue, status, bill_status, bill_number, created_at
+    FROM service_requests
+    WHERE customer_name LIKE ? OR customer_mobile LIKE ? OR id LIKE ? OR issue LIKE ?
+    ORDER BY created_at DESC
+    LIMIT ?
+  `).all(like, like, like, like, limit);
 };
 
 const getServiceRequestsByRole = (role, userId, mobile) => {
@@ -135,9 +161,86 @@ const getPayments = (id) => {
     return db.prepare("SELECT * FROM service_payments WHERE service_request_id = ? ORDER BY paid_at DESC").all(id);
 };
 
+const cancelServiceRequest = (id, reason) => {
+    const cancelledPos = [];
+    const cancelledQuotes = [];
+    const rejectedQuotes = [];
+
+    const transaction = db.transaction(() => {
+        db.prepare(`
+            UPDATE service_requests
+            SET status = 'Canceled', cancel_reason = ?, canceled_at = ?, assigned_employee_id = NULL, assigned_employee_name = NULL, service_person = NULL, scheduled_date = NULL,
+                part_request_status = 'none', buyout_requisition = NULL
+            WHERE id = ?
+        `).run(reason || "", nowIso(), id);
+
+        // Cancel the purchase-order flow: any PO raised for this request that hasn't been received yet.
+        const pos = db.prepare(`
+            SELECT id, po_number, status FROM purchase_orders
+            WHERE service_request_id = ? AND status NOT IN ('received', 'cancelled')
+        `).all(id);
+        for (const po of pos) {
+            db.prepare(`
+                UPDATE purchase_orders
+                SET status = 'cancelled', notes = COALESCE(notes || ' ', '') || 'Cancelled with service request (' || ? || ')'
+                WHERE id = ?
+            `).run(reason ? `reason: ${reason}` : 'service cancelled', po.id);
+            cancelledPos.push(po.po_number);
+        }
+
+        // Cancel pending sales quotations raised for this request.
+        const quotes = db.prepare(`
+            SELECT id, quote_number FROM sales_quotations
+            WHERE service_request_id = ? AND status = 'pending'
+        `).all(id);
+        for (const q of quotes) {
+            db.prepare("UPDATE sales_quotations SET status = 'cancelled' WHERE id = ?").run(q.id);
+            cancelledQuotes.push(q.quote_number);
+        }
+
+        // Reject any supplier quotes still awaiting approval for this request.
+        const pendingSq = db.prepare(`
+            SELECT id, quote_number FROM supplier_quotes
+            WHERE service_request_id = ? AND status = 'pending'
+        `).all(id);
+        for (const sq of pendingSq) {
+            db.prepare("UPDATE supplier_quotes SET status = 'rejected' WHERE id = ?").run(sq.id);
+            rejectedQuotes.push(sq.quote_number);
+        }
+    });
+    transaction();
+
+    return { cancelledPos, cancelledQuotes, rejectedQuotes };
+};
+
+const requestParts = (id, requestedParts) => {
+    db.prepare(`
+        UPDATE service_requests
+        SET requested_parts = ?, part_request_status = 'requested'
+        WHERE id = ?
+    `).run(JSON.stringify(requestedParts), id);
+};
+
+const markPartsAvailable = (id) => {
+    db.prepare(`
+        UPDATE service_requests
+        SET part_request_status = 'available'
+        WHERE id = ?
+    `).run(id);
+};
+
+const markPartsCollected = (id) => {
+    db.prepare(`
+        UPDATE service_requests
+        SET part_request_status = 'collected'
+        WHERE id = ?
+    `).run(id);
+};
+
 module.exports = {
   createServiceRequestRecord,
   getServiceRequestById,
+  listRequestsForLinking,
   getServiceRequestsByRole,
   updateServiceRequestStatus,
   assignTechnician,
@@ -146,5 +249,9 @@ module.exports = {
   updateServiceRequestNotes,
   generateBill,
   recordPayment,
-  getPayments
+  getPayments,
+  cancelServiceRequest,
+  requestParts,
+  markPartsAvailable,
+  markPartsCollected
 };

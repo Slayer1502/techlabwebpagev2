@@ -12,7 +12,9 @@ const getPurchaseOrders = () => {
 
 const getPurchaseOrderById = (id) => {
   const purchaseOrder = db.prepare(`
-    SELECT po.*, pt.name as supplier_name, e.advance_amount, e.advance_mode
+    SELECT po.*, pt.name as supplier_name, e.advance_amount, e.advance_mode,
+      e.supplier_advance_amount, e.supplier_advance_mode, e.supplier_advance_date,
+      e.customer_advance_amount, e.customer_advance_mode, e.customer_advance_date
     FROM purchase_orders po
     LEFT JOIN parties pt ON po.supplier_id = pt.id
     LEFT JOIN enquiries e ON po.id = e.po_id
@@ -24,7 +26,7 @@ const getPurchaseOrderById = (id) => {
 };
 
 const createPurchaseOrder = (data) => {
-  const { supplierId, poDate, expectedDate, notes, items } = data;
+  const { supplierId, poDate, expectedDate, notes, items, serviceRequestId } = data;
   const id = makeId("po");
   const seq = db.prepare("SELECT COUNT(*) as c FROM purchase_orders").get().c + 1;
   const poNumber = `PO-${String(seq).padStart(4, "0")}`;
@@ -32,8 +34,8 @@ const createPurchaseOrder = (data) => {
   const total = items.reduce((s, it) => s + (Number(it.quantity) * (Number(it.unitCost) || 0)), 0);
 
   const transaction = db.transaction(() => {
-    db.prepare(`INSERT INTO purchase_orders (id, po_number, supplier_id, po_date, expected_date, notes, status, total_amount, created_at) VALUES (?, ?, ?, ?, ?, ?, 'ordered', ?, ?)`)
-      .run(id, poNumber, supplierId, date, expectedDate || null, notes || null, total, nowIso());
+    db.prepare(`INSERT INTO purchase_orders (id, po_number, supplier_id, po_date, expected_date, notes, status, total_amount, service_request_id, created_at) VALUES (?, ?, ?, ?, ?, ?, 'ordered', ?, ?, ?)`)
+      .run(id, poNumber, supplierId, date, expectedDate || null, notes || null, total, serviceRequestId || null, nowIso());
     const insertItem = db.prepare(`INSERT INTO purchase_order_items (id, po_id, product_id, product_name, quantity, unit_cost) VALUES (?, ?, ?, ?, ?, ?)`);
     for (const it of items) {
       insertItem.run(makeId("poi"), id, it.productId || null, String(it.productName).trim(), Number(it.quantity), Number(it.unitCost) || 0);
@@ -57,11 +59,16 @@ const receivePurchaseOrder = (id, body) => {
   let advanceDate = body?.advanceDate || date;
 
   if (!advanceAmount) {
-    const linkedEnquiry = db.prepare("SELECT advance_amount, advance_mode, advance_date FROM enquiries WHERE po_id = ? AND advance_amount > 0").get(id);
+    const linkedEnquiry = db.prepare(`
+      SELECT COALESCE(supplier_advance_amount, advance_amount) as adv,
+             COALESCE(supplier_advance_mode, advance_mode) as adv_mode,
+             COALESCE(supplier_advance_date, advance_date) as adv_date
+      FROM enquiries WHERE po_id = ? AND COALESCE(supplier_advance_amount, advance_amount) > 0
+    `).get(id);
     if (linkedEnquiry) {
-      advanceAmount = Number(linkedEnquiry.advance_amount) || 0;
-      advanceMode = linkedEnquiry.advance_mode || "Cash";
-      advanceDate = linkedEnquiry.advance_date || date;
+      advanceAmount = Number(linkedEnquiry.adv) || 0;
+      advanceMode = linkedEnquiry.adv_mode || "Cash";
+      advanceDate = linkedEnquiry.adv_date || date;
     }
   }
 
@@ -116,6 +123,34 @@ const receivePurchaseOrder = (id, body) => {
     }
 
     db.prepare("UPDATE purchase_orders SET status = 'received' WHERE id = ?").run(id);
+
+    if (po.service_request_id) {
+      const request = db.prepare("SELECT requested_parts, part_request_status, buyout_requisition FROM service_requests WHERE id = ?").get(po.service_request_id);
+      if (request) {
+        let record = {};
+        try { record = request.buyout_requisition ? JSON.parse(request.buyout_requisition) : {}; } catch { record = {}; }
+        record.status = "received";
+        record.poId = id;
+        record.poNumber = po.po_number;
+        db.prepare("UPDATE service_requests SET buyout_requisition = ? WHERE id = ?")
+          .run(JSON.stringify(record), po.service_request_id);
+
+        let parts = {};
+        try { parts = request.requested_parts ? JSON.parse(request.requested_parts) : {}; } catch { parts = {}; }
+        if (!Array.isArray(parts.inventory)) parts.inventory = [];
+        const existingNames = new Set(parts.inventory.map((p) => String(p.name || "").trim().toLowerCase()));
+        for (const it of items) {
+          const nm = String(it.product_name || "").trim();
+          if (!nm || existingNames.has(nm.toLowerCase())) continue;
+          parts.inventory.push({ productId: it.product_id || null, name: nm, qty: it.quantity || 1, source: "buyout" });
+          existingNames.add(nm.toLowerCase());
+        }
+        const nextStatus = (!request.part_request_status || request.part_request_status === "none" || request.part_request_status === "requested")
+          ? "requested" : request.part_request_status;
+        db.prepare("UPDATE service_requests SET requested_parts = ?, part_request_status = ? WHERE id = ?")
+          .run(JSON.stringify(parts), nextStatus, po.service_request_id);
+      }
+    }
   });
 
   transaction();

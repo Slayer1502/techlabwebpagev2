@@ -92,10 +92,20 @@ const getPartyDetail = (id) => {
   return { party, purchases, openPos, orders, services, pendingChallans };
 };
 
+const getPartyFlags = (data) => {
+  const isBodySupplier = data?.isSupplier != null ? data.isSupplier : (data?.is_supplier != null ? data.is_supplier : null);
+  const isBodyCustomer = data?.isCustomer != null ? data.isCustomer : (data?.is_customer != null ? data.is_customer : null);
+  return {
+    isBodySupplier: isBodySupplier == null ? null : (isBodySupplier ? 1 : 0),
+    isBodyCustomer: isBodyCustomer == null ? null : (isBodyCustomer ? 1 : 0)
+  };
+};
+
 const createParty = (data) => {
-  const { name, mobile, email, address, gstNumber, contactPerson, notes, isSupplier: bodyIsSupplier, isCustomer: bodyIsCustomer } = data;
-  const isSupplier = bodyIsSupplier != null ? (bodyIsSupplier ? 1 : 0) : (gstNumber ? 1 : 0);
-  const isCustomer = bodyIsCustomer != null ? (bodyIsCustomer ? 1 : 0) : (gstNumber ? 0 : 1);
+  const { name, mobile, email, address, gstNumber, contactPerson, notes } = data;
+  const { isBodySupplier, isBodyCustomer } = getPartyFlags(data);
+  const isSupplier = isBodySupplier != null ? isBodySupplier : (gstNumber ? 1 : 0);
+  const isCustomer = isBodyCustomer != null ? isBodyCustomer : (gstNumber ? 0 : 1);
   const id = `party-${Math.random().toString(36).slice(2, 8)}`;
 
   db.prepare(`INSERT INTO parties (id, name, mobile, email, address, gst_number, contact_person, notes, is_supplier, is_customer, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
@@ -105,12 +115,13 @@ const createParty = (data) => {
 };
 
 const updateParty = (id, data) => {
-  const party = db.prepare("SELECT id, mobile FROM parties WHERE id = ?").get(id);
+  const party = db.prepare("SELECT id, mobile, is_supplier, is_customer FROM parties WHERE id = ?").get(id);
   if (!party) throw new Error("Party not found");
 
-  const { name, mobile, email, address, gstNumber, contactPerson, notes, isSupplier: bodyIsSupplier, isCustomer: bodyIsCustomer } = data;
-  const isSupplier = bodyIsSupplier != null ? (bodyIsSupplier ? 1 : 0) : (gstNumber ? 1 : 0);
-  const isCustomer = bodyIsCustomer != null ? (bodyIsCustomer ? 1 : 0) : (gstNumber ? 0 : 1);
+  const { name, mobile, email, address, gstNumber, contactPerson, notes } = data;
+  const { isBodySupplier, isBodyCustomer } = getPartyFlags(data);
+  const isSupplier = isBodySupplier != null ? isBodySupplier : party.is_supplier;
+  const isCustomer = isBodyCustomer != null ? isBodyCustomer : party.is_customer;
 
   const cleanName = String(name).trim();
 
@@ -119,9 +130,11 @@ const updateParty = (id, data) => {
       .run(cleanName, mobile || null, email || null, address || null, gstNumber || null, contactPerson || null, notes || null, isSupplier, isCustomer, id);
 
     if (party.mobile) {
+      db.prepare("UPDATE enquiries SET customer_name = ?, customer_mobile = ? WHERE customer_mobile = ?").run(cleanName, mobile || party.mobile, party.mobile);
       db.prepare("UPDATE service_requests SET customer_name = ?, customer_mobile = ? WHERE customer_mobile = ?").run(cleanName, mobile || party.mobile, party.mobile);
       db.prepare("UPDATE product_orders SET customer_name = ?, customer_mobile = ? WHERE customer_mobile = ?").run(cleanName, mobile || party.mobile, party.mobile);
       db.prepare("UPDATE delivery_challans SET customer_name = ?, customer_mobile = ? WHERE customer_mobile = ?").run(cleanName, mobile || party.mobile, party.mobile);
+      db.prepare("UPDATE sales_quotations SET customer_name = ?, customer_mobile = ? WHERE customer_mobile = ?").run(cleanName, mobile || party.mobile, party.mobile);
     }
   });
 

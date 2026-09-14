@@ -9,6 +9,7 @@ const getBusinessSettings = () => {
     business_email: "techlabkarur@gmail.com",
     business_address: "Casa Layout, Karur - 639001, Tamil Nadu",
     google_review_url: "https://g.page/r/techlab-karur/review",
+    fuel_city: "Karur",
     gmail_app_password: ""
   };
   rows.forEach(r => {
@@ -26,6 +27,7 @@ const updateBusinessSettings = (data) => {
     if (data.business_email !== undefined) upsert.run("business_email", String(data.business_email || ""));
     if (data.business_address !== undefined) upsert.run("business_address", String(data.business_address || ""));
     if (data.google_review_url !== undefined) upsert.run("google_review_url", String(data.google_review_url || ""));
+    if (data.fuel_city !== undefined) upsert.run("fuel_city", String(data.fuel_city || ""));
     if (data.gmail_app_password !== undefined) upsert.run("gmail_app_password", String(data.gmail_app_password || ""));
   });
   transaction();

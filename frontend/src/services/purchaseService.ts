@@ -1,9 +1,15 @@
 import api from '../utils/api';
+import { SupplierQuote, SupplierQuoteItem } from '../types';
 
 export const purchaseService = {
   getPurchaseOrders: async () => {
     const res = await api.get('/sales/purchase-orders');
     return res.data.purchaseOrders;
+  },
+
+  getPurchaseOrderDetail: async (id: string) => {
+    const res = await api.get(`/sales/purchase-orders/${id}`);
+    return res.data;
   },
 
   getPurchases: async (status?: string) => {
@@ -26,9 +32,14 @@ export const purchaseService = {
     return res.data;
   },
 
-  getQuotes: async (status?: string) => {
+  getQuotes: async (status?: string): Promise<SupplierQuote[]> => {
     const res = await api.get('/sales/quotes', { params: { status } });
-    return res.data.quotes;
+    return res.data.quotes as SupplierQuote[];
+  },
+
+  getQuoteDetail: async (id: string): Promise<{ quote: SupplierQuote; items: SupplierQuoteItem[] }> => {
+    const res = await api.get(`/sales/quotes/${id}`);
+    return res.data as { quote: SupplierQuote; items: SupplierQuoteItem[] };
   },
 
   approveQuote: async (id: string) => {
@@ -43,6 +54,23 @@ export const purchaseService = {
 
   uploadQuote: async (formData: FormData) => {
     const res = await api.post('/sales/quotes/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    return res.data;
+  },
+
+  getSupplierQuotesForService: async (serviceRequestId: string): Promise<SupplierQuote[]> => {
+    const res = await api.get(`/sales/service-requests/${serviceRequestId}/supplier-quotes`);
+    return res.data.quotes as SupplierQuote[];
+  },
+
+  createSupplierQuoteForService: async (serviceRequestId: string, data: any) => {
+    const res = await api.post(`/sales/service-requests/${serviceRequestId}/supplier-quote`, data);
+    return res.data;
+  },
+
+  attachQuotePdf: async (id: string, formData: FormData) => {
+    const res = await api.post(`/sales/quotes/${id}/upload`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     });
     return res.data;

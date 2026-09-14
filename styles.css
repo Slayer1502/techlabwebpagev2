@@ -568,6 +568,26 @@ body[data-theme="dark"] .button-accent:hover {
   font-weight: 700;
 }
 
+.discount-pill.danger {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.product-card-img {
+  width: 100%;
+  height: 130px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--soft, #f4f6fb);
+  margin: -14px -14px 0;
+}
+.product-card-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
 .product-card .price {
   font-size: 1.05rem;
   font-weight: 700;
@@ -2349,6 +2369,20 @@ body[data-theme="dark"] .tech-hero {
 
 .admin-product-card h4 { font-size: 0.95rem; }
 
+.admin-product-card-img {
+  height: 120px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--soft, #f4f6fb);
+  margin-bottom: 8px;
+}
+.admin-product-card-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
 .admin-product-card-pricing {
   display: flex;
   align-items: baseline;
@@ -2789,6 +2823,34 @@ body[data-theme="dark"] .tech-hero {
 }
 
 .pos-card-icon { font-size: 20px; margin-bottom: 2px; }
+
+.pos-card-img {
+  height: 64px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--soft, #f4f6fb);
+  margin-bottom: 2px;
+}
+.pos-card-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.pos-card-low-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+.pos-product-card { position: relative; }
 
 .pos-card-name {
   font-size: 0.82rem;

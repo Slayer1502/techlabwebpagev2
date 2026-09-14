@@ -84,7 +84,7 @@ const CustomerDashboard = () => {
                  {orders.map((o: any) => (
                     <div key={o.id} className="p-5 hover:bg-soft/20 transition-colors flex items-center justify-between">
                        <div>
-                          <p className="text-sm font-bold text-navy">Order #{o.id.slice(-8)}</p>
+                          <p className="text-sm font-bold text-navy">Order {o.bill_number ? `#${o.bill_number}` : `#${o.id.slice(-8)}`}</p>
                           <p className="text-[10px] text-text-soft font-medium uppercase tracking-tight">{formatDateValue(o.created_at)} • {formatCurrencyValue(o.total_amount)}</p>
                        </div>
                        <div className="flex items-center gap-4">

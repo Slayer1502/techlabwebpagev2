@@ -6,6 +6,7 @@ import { serviceRequestService } from '../services/serviceRequestService';
 import CameraRows, { CameraRow } from '../components/survey/CameraRows';
 import CableRows, { CableRow } from '../components/survey/CableRows';
 import PartRows, { PartRow } from '../components/survey/PartRows';
+import PowerRows, { PowerRow } from '../components/survey/PowerRows';
 import PhotoUpload from '../components/survey/PhotoUpload';
 import {
   Save,
@@ -17,7 +18,8 @@ import {
   Zap,
   Wrench,
   Camera as CameraIcon,
-  ClipboardList
+  ClipboardList,
+  Package
 } from 'lucide-react';
 import { toast } from '../utils/toast';
 
@@ -35,9 +37,8 @@ const SurveyForm = () => {
   const [nvrType, setNvrType] = useState('NVR');
   const [nvrChannels, setNvrChannels] = useState('4');
   const [nvrBrand, setNvrBrand] = useState('');
-  const [powerType, setPowerType] = useState('PoE');
-  const [powerChannels, setPowerChannels] = useState('4');
-  const [powerBrand, setPowerBrand] = useState('');
+  const [powerUnits, setPowerUnits] = useState<PowerRow[]>([]);
+  const [additionalParts, setAdditionalParts] = useState<PartRow[]>([]);
   const [cables, setCables] = useState<CableRow[]>([]);
   const [mountRackType, setMountRackType] = useState('');
   const [mountPoles, setMountPoles] = useState(0);
@@ -46,14 +47,13 @@ const SurveyForm = () => {
   const [generalNotes, setNotes] = useState('');
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
 
-  // Auto-calculate NVR channels
+  // Auto-calculate NVR channels from camera count
   useEffect(() => {
     const totalCameras = cameras.reduce((sum, c) => sum + c.count, 0);
     if (totalCameras > 0) {
       const validChannels = [4, 8, 16, 32, 64];
       const recommended = validChannels.find(c => c >= totalCameras) || 64;
       setNvrChannels(recommended.toString());
-      setPowerChannels(recommended.toString());
       if (nvrNeeded === 'no') setNvrNeeded('yes');
     }
 
@@ -78,13 +78,10 @@ const SurveyForm = () => {
         type: nvrType,
         channels: Number(nvrChannels),
         brand: nvrBrand,
-        power: nvrNeeded === 'yes' ? {
-          type: powerType,
-          channels: Number(powerChannels),
-          brand: powerBrand
-        } : null
+        powerUnits
       }));
 
+      formData.append('additional_parts', JSON.stringify(additionalParts));
       formData.append('cables', JSON.stringify(cables.map(c => ({ ...c, length: 0 }))));
 
       formData.append('mounting', JSON.stringify({
@@ -212,6 +209,7 @@ const SurveyForm = () => {
                           <option value="8">8 CH</option>
                           <option value="16">16 CH</option>
                           <option value="32">32 CH</option>
+                          <option value="64">64 CH</option>
                         </select>
                       </div>
                     </div>
@@ -228,48 +226,23 @@ const SurveyForm = () => {
                 )}
               </div>
 
-              <div className="space-y-6">
+              <div className="space-y-2">
+                <p className="text-xs font-bold text-text-soft uppercase">Power Units (per floor)</p>
                 {nvrNeeded === 'yes' && (
-                  <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1">
-                        <label className="text-xs font-bold text-text-soft uppercase">Power Source</label>
-                        <select
-                          className="w-full bg-white border-2 border-gray-200 rounded-xl px-4 py-2.5 outline-none focus:border-blue/40 transition-all"
-                          value={powerType}
-                          onChange={e => setPowerType(e.target.value)}
-                        >
-                          <option value="PoE">PoE Switch</option>
-                          <option value="SMPS">SMPS Supply</option>
-                          <option value="Adaptors">Individual Adaptors</option>
-                        </select>
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-xs font-bold text-text-soft uppercase">Power CH</label>
-                        <select
-                          className="w-full bg-white border-2 border-gray-200 rounded-xl px-4 py-2.5 outline-none focus:border-blue/40 transition-all"
-                          value={powerChannels}
-                          onChange={e => setPowerChannels(e.target.value)}
-                        >
-                          <option value="4">4 Port</option>
-                          <option value="8">8 Port</option>
-                          <option value="16">16 Port</option>
-                        </select>
-                      </div>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-text-soft uppercase">Power Brand</label>
-                      <input
-                        className="w-full bg-white border-2 border-gray-200 rounded-xl px-4 py-2.5 outline-none focus:border-blue/40 transition-all"
-                        placeholder="e.g. Syrotech / TP-Link"
-                        value={powerBrand}
-                        onChange={e => setPowerBrand(e.target.value)}
-                      />
-                    </div>
-                  </div>
+                  <PowerRows rows={powerUnits} onChange={setPowerUnits} />
                 )}
               </div>
             </div>
+          </div>
+
+          {/* Section: Additional Parts */}
+          <div className="bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-gray-100">
+            <SectionHeader
+              icon={Package}
+              title="Additional Parts"
+              subtitle="Other components needed for the installation"
+            />
+            <PartRows rows={additionalParts} onChange={setAdditionalParts} />
           </div>
 
           {/* Section: Cables */}
@@ -293,7 +266,7 @@ const SurveyForm = () => {
               <div className="space-y-1">
                 <label className="text-xs font-bold text-text-soft uppercase text-center block">Rack</label>
                 <select
-                  className="w-full text-center bg-gray-50 border rounded-xl py-2 font-bold outline-none focus:border-blue/40 transition-all"
+                  className="w-full text-center bg-white border-2 border-gray-200 rounded-xl py-2 font-bold outline-none focus:border-blue/40 transition-all"
                   value={mountRackType}
                   onChange={e => setMountRackType(e.target.value)}
                 >
@@ -308,7 +281,7 @@ const SurveyForm = () => {
                 <label className="text-xs font-bold text-text-soft uppercase text-center block">Poles</label>
                 <input
                   type="number"
-                  className="w-full text-center bg-gray-50 border rounded-xl py-2 font-bold"
+                  className="w-full text-center bg-white border-2 border-gray-200 rounded-xl py-2 font-bold"
                   value={mountPoles}
                   onChange={e => setMountPoles(Number(e.target.value))}
                 />

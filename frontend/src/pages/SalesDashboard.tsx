@@ -22,7 +22,8 @@ import {
   Plus,
   ArrowRight,
   Sparkles,
-  ChevronRight
+  ChevronRight,
+  PackageCheck
 } from 'lucide-react';
 import { formatCurrencyValue } from '../utils/helpers';
 import { clsx, type ClassValue } from 'clsx';
@@ -223,6 +224,7 @@ const SalesDashboard = () => {
                            <th className="px-4 py-3">Customer</th>
                            <th className="px-4 py-3">Device / Problem</th>
                            <th className="px-4 py-3">Status</th>
+                           <th className="px-4 py-3">Parts</th>
                            <th className="px-4 py-3 text-right">Action</th>
                          </tr>
                        </thead>
@@ -243,6 +245,21 @@ const SalesDashboard = () => {
                                )}>
                                  {req.status}
                                </span>
+                             </td>
+                             <td className="px-4 py-4">
+                               {req.part_request_status === 'requested' && (
+                                 <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 flex items-center gap-1 w-fit">
+                                   <AlertTriangle className="h-3 w-3" /> Parts Needed
+                                 </span>
+                               )}
+                               {req.part_request_status === 'available' && (
+                                 <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-green-100 text-green-700 flex items-center gap-1 w-fit">
+                                   <PackageCheck className="h-3 w-3" /> Ready
+                                 </span>
+                               )}
+                               {(!req.part_request_status || req.part_request_status === 'none' || req.part_request_status === 'collected') && (
+                                 <span className="text-[10px] text-text-soft">—</span>
+                               )}
                              </td>
                              <td className="px-4 py-4 text-right">
                                <button onClick={() => navigate('/tickets')} className="p-2 text-blue hover:bg-blue/10 rounded-lg">

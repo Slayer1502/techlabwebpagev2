@@ -19,15 +19,16 @@ const uploadPdf = multer({
   },
 });
 
-router.use("/sales", authRequired(["sales", "admin"]));
-
-router.get("/sales/quotes", quoteController.getQuotes);
-router.get("/sales/quotes/:id", quoteController.getQuoteDetail);
-router.post("/sales/quotes", quoteController.createQuote);
-router.post("/sales/quotes/:id/approve", quoteController.approveQuote);
-router.post("/sales/quotes/:id/reject", quoteController.rejectQuote);
-router.delete("/sales/quotes/:id", quoteController.deleteQuote);
-router.post("/sales/quotes/upload", uploadPdf.single("pdf"), quoteController.uploadQuotePdf);
-router.get("/sales/quotes/:id/pdf", quoteController.downloadQuotePdf);
+router.get("/sales/quotes", authRequired(["sales", "admin"]), quoteController.getQuotes);
+router.get("/sales/quotes/:id", authRequired(["sales", "admin"]), quoteController.getQuoteDetail);
+router.get("/sales/service-requests/:id/supplier-quotes", authRequired(["sales", "admin"]), quoteController.getSupplierQuotesForService);
+router.post("/sales/service-requests/:id/supplier-quote", authRequired(["sales", "admin"]), quoteController.createSupplierQuoteForService);
+router.post("/sales/quotes", authRequired(["sales", "admin"]), quoteController.createQuote);
+router.post("/sales/quotes/:id/approve", authRequired(["sales", "admin"]), quoteController.approveQuote);
+router.post("/sales/quotes/:id/reject", authRequired(["sales", "admin"]), quoteController.rejectQuote);
+router.delete("/sales/quotes/:id", authRequired(["sales", "admin"]), quoteController.deleteQuote);
+router.post("/sales/quotes/:id/upload", authRequired(["sales", "admin"]), uploadPdf.single("pdf"), quoteController.uploadQuotePdfToQuote);
+router.post("/sales/quotes/upload", authRequired(["sales", "admin"]), uploadPdf.single("pdf"), quoteController.uploadQuotePdf);
+router.get("/sales/quotes/:id/pdf", authRequired(["sales", "admin"]), quoteController.downloadQuotePdf);
 
 module.exports = router;

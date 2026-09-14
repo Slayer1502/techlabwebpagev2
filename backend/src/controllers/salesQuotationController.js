@@ -37,8 +37,8 @@ const updateQuotation = async (req, res) => {
 
 const convertQuotation = async (req, res) => {
   try {
-    salesQuotationService.convertQuotation(req.params.id);
-    res.json({ message: "Quotation marked as converted" });
+    const result = salesQuotationService.convertQuotation(req.params.id);
+    res.json({ message: "Quotation marked as converted", ...result });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

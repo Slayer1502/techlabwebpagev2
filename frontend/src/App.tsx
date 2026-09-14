@@ -21,6 +21,10 @@ import ChallansPage from './pages/ChallansPage';
 import CustomerDashboard from './pages/CustomerDashboard';
 import TechnicianDashboard from './pages/TechnicianDashboard';
 import AdminDashboard from './pages/AdminDashboard';
+import AuditorDashboard from './pages/AuditorDashboard';
+import AuditLogPage from './pages/AuditLogPage';
+import ExpensesPage from './pages/ExpensesPage';
+import RecurringServicesPage from './pages/RecurringServicesPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import api from './utils/api';
 import { useAuthStore } from './store/authStore';
@@ -66,6 +70,7 @@ function App() {
         <Route element={<ProtectedRoute />}>
           {/* Dashboards */}
           <Route path="/admin/dashboard" element={<AdminDashboard />} />
+          <Route path="/auditor/dashboard" element={<AuditorDashboard />} />
           <Route path="/sales/dashboard" element={<SalesDashboard />} />
           <Route path="/employee/dashboard" element={<SalesDashboard />} />
           <Route path="/technician/dashboard" element={<TechnicianDashboard />} />
@@ -79,12 +84,18 @@ function App() {
           <Route path="/parties" element={<PartiesPage />} />
           <Route path="/pos" element={<POSPage />} />
           <Route path="/quotations" element={<QuotationPage />} />
+          <Route path="/quotations/:id" element={<QuotationPage />} />
           <Route path="/purchases" element={<PurchasesPage />} />
           <Route path="/orders" element={<OrdersPage />} />
           <Route path="/challans" element={<ChallansPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/expenses" element={<ExpensesPage />} />
+          <Route path="/recurring-services" element={<RecurringServicesPage />} />
+          <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
+            <Route path="/audit-log" element={<AuditLogPage />} />
+          </Route>
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

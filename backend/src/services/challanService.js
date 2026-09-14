@@ -20,6 +20,13 @@ const buildChallanItems = (sourceType, sourceId, explicitItems) => {
         customerName = req.customer_name || "";
         customerMobile = req.customer_mobile || "";
       }
+    } else if (sourceType === "enquiry") {
+      const enq = db.prepare("SELECT customer_name, customer_mobile, visit_address FROM enquiries WHERE id = ?").get(sourceId);
+      if (enq) {
+        customerName = enq.customer_name || "";
+        customerMobile = enq.customer_mobile || "";
+        customerAddress = enq.visit_address || "";
+      }
     }
     return {
       hasExplicitItems: true,
@@ -27,7 +34,7 @@ const buildChallanItems = (sourceType, sourceId, explicitItems) => {
       customer_mobile: customerMobile,
       customer_address: customerAddress,
       items: explicitItems.map((i) => ({
-        productId: i.productId || null,
+        productId: i.productId || i.product_id || null,
         name: String((i.name || i.item || "").trim()) || "Item",
         qty: Number(i.qty) || 1,
         price: Number(i.rate ?? i.price ?? i.customPrice) || 0,
@@ -45,6 +52,40 @@ const buildChallanItems = (sourceType, sourceId, explicitItems) => {
       items: items.map(i => ({ name: i.product_name, qty: i.qty || 1, price: i.price })),
     };
   }
+  if (sourceType === "enquiry") {
+    const enq = db.prepare("SELECT * FROM enquiries WHERE id = ?").get(sourceId);
+    if (!enq) return null;
+    let items = [];
+    if (enq.quote_options) {
+      try {
+        const opts = JSON.parse(enq.quote_options);
+        if (Array.isArray(opts)) {
+          items = opts
+            .map(o => ({
+              name: String(o.name || enq.product_interest || "Item").trim(),
+              qty: Number(o.quantity) || 1,
+              price: Number(o.quotedPrice) || 0,
+              productId: o.productId || null,
+            }))
+            .filter(i => i.name);
+        }
+      } catch (e) {}
+    }
+    if (!items.length) {
+      items = [{
+        name: String(enq.product_interest || "Product").trim() || "Item",
+        qty: Number(enq.quantity) || 1,
+        price: Number(enq.quoted_price) || 0,
+        productId: enq.product_id || null,
+      }];
+    }
+    return {
+      customer_name: enq.customer_name,
+      customer_mobile: enq.customer_mobile,
+      customer_address: enq.visit_address || "",
+      items: items,
+    };
+  }
   if (sourceType === "service") {
     const req = db.prepare("SELECT * FROM service_requests WHERE id = ?").get(sourceId);
     if (!req) return null;
@@ -52,14 +93,27 @@ const buildChallanItems = (sourceType, sourceId, explicitItems) => {
     if (req.used_items) {
       try {
         const used = JSON.parse(req.used_items);
-        if (Array.isArray(used)) items = used.map(u => ({ name: String(u.name || "").trim(), qty: Number(u.qty) || 1, price: 0 })).filter(i => i.name);
+        if (Array.isArray(used)) items = used
+          .filter(u => String(u.type || "").toLowerCase() !== "service")
+          .map(u => ({
+            name: String(u.name || "").trim(),
+            qty: Number(u.qty) || 1,
+            price: Number(u.price) || 0,
+            productId: u.product_id || u.productId || null,
+          }))
+          .filter(i => i.name);
       } catch (e) {}
     }
     if (!items.length && req.requested_parts) {
       try {
         const parts = JSON.parse(req.requested_parts);
         if (parts && Array.isArray(parts.inventory)) {
-          items = parts.inventory.map(p => ({ name: String(p.name || "").trim(), qty: Number(p.qty) || 1, price: 0 })).filter(i => i.name);
+          items = parts.inventory.map(p => ({
+            name: String(p.name || "").trim(),
+            qty: Number(p.qty) || 1,
+            price: 0,
+            productId: p.product_id || p.productId || null,
+          })).filter(i => i.name);
         }
       } catch (e) {}
     }
@@ -78,7 +132,7 @@ const createOrUpdateChallan = (data, userId) => {
   const type = String(sourceType || "").toLowerCase();
 
   const source = buildChallanItems(type, String(sourceId), explicitItems);
-  if (!source) throw new Error(type === "order" ? "Order not found" : "Service request not found");
+  if (!source) throw new Error(type === "order" ? "Order not found" : type === "enquiry" ? "Enquiry not found" : "Service request not found");
 
   let existing = null;
   if (challanId) {
@@ -186,6 +240,7 @@ const createStandaloneChallan = (data, userId) => {
     `).run(id, challanNumber, id, customerName, mobile, dispatchDateValue, receiverName || customerName, transport || null, vehicleNo || null, notes || null, userId, nowIso(), totalValue);
 
     const insertItem = db.prepare("INSERT INTO delivery_challan_items (challan_id, item_name, qty, unit_price, total_price) VALUES (?, ?, ?, ?, ?)");
+    let droppedUnknown = false;
     items.forEach(item => {
       const unitPrice = Number(item.customPrice) || 0;
       const lineTotal = item.qty * unitPrice;
@@ -196,8 +251,14 @@ const createStandaloneChallan = (data, userId) => {
 
       if (p && p.type !== "Service") {
         deductStock(item.productId, item.qty);
+      } else if (!p) {
+        droppedUnknown = true;
       }
     });
+
+    if (!droppedUnknown) {
+      db.prepare("UPDATE delivery_challans SET stock_deducted = 1 WHERE id = ?").run(id);
+    }
     return { id, challan_number: challanNumber };
   });
 
@@ -207,7 +268,7 @@ const createStandaloneChallan = (data, userId) => {
 const returnChallanItems = (challanId, returns) => {
   const dc = db.prepare("SELECT * FROM delivery_challans WHERE id = ?").get(challanId);
   if (!dc) throw new Error("Challan not found");
-  if (dc.billing_status === 'billed') throw new Error("Cannot adjust a billed challan");
+  if (dc.billing_status !== 'pending') throw new Error("Only unbilled challans can be adjusted");
 
   const transaction = db.transaction(() => {
     for (const [itemId, returnedQty] of Object.entries(returns)) {
@@ -240,6 +301,9 @@ const consolidateChallansToBill = (ids, isGst) => {
     const isGstBill = isGst === false ? 0 : 1;
     const challans = db.prepare(`SELECT * FROM delivery_challans WHERE id IN (${ids.map(() => "?").join(",")})`).all(...ids);
     if (challans.length !== ids.length) throw new Error("Some challans not found");
+
+    const invalid = challans.find(c => c.billing_status !== 'pending');
+    if (invalid) throw new Error(`Challan ${invalid.challan_number} is no longer unbilled`);
 
     const customerKeys = new Set(challans.map(c => c.customer_mobile || c.customer_name));
     if (customerKeys.size > 1) {
@@ -302,6 +366,39 @@ const getChallanById = (id) => {
     return { ...challan, items };
 };
 
+const markDelivered = (challanId, userId, receivedBy) => {
+  const dc = db.prepare("SELECT * FROM delivery_challans WHERE id = ?").get(challanId);
+  if (!dc) throw new Error("Challan not found");
+  if (dc.billing_status !== "pending") throw new Error("Only unbilled challans can be marked delivered");
+
+  const receivedByVal = String(receivedBy || "").trim() || dc.receiver_name || dc.customer_name;
+  db.prepare("UPDATE delivery_challans SET delivered_at = ?, received_by = ? WHERE id = ?")
+    .run(nowIso(), receivedByVal, challanId);
+
+  return { id: challanId, delivered_at: nowIso(), received_by: receivedByVal };
+};
+
+const voidChallan = (challanId, userId, voidReason) => {
+  const dc = db.prepare("SELECT * FROM delivery_challans WHERE id = ?").get(challanId);
+  if (!dc) throw new Error("Challan not found");
+  if (dc.billing_status !== "pending") throw new Error("Only unbilled challans can be voided");
+
+  const transaction = db.transaction(() => {
+    if (dc.stock_deducted === 1) {
+      const items = db.prepare("SELECT item_name, qty FROM delivery_challan_items WHERE challan_id = ?").all(challanId);
+      items.forEach((item) => {
+        const p = db.prepare("SELECT id FROM products WHERE name = ? AND active = 1").get(item.item_name);
+        if (p) returnStock(p.id, item.qty);
+      });
+    }
+    db.prepare("UPDATE delivery_challans SET billing_status = 'cancelled', void_reason = ?, voided_by = ?, voided_at = ? WHERE id = ?")
+      .run(String(voidReason || "").trim() || null, userId, nowIso(), challanId);
+  });
+
+  transaction();
+  return { id: challanId, billing_status: "cancelled" };
+};
+
 module.exports = {
   buildChallanItems,
   createOrUpdateChallan,
@@ -309,5 +406,7 @@ module.exports = {
   getChallanById,
   createStandaloneChallan,
   returnChallanItems,
-  consolidateChallansToBill
+  consolidateChallansToBill,
+  markDelivered,
+  voidChallan
 };

@@ -77,16 +77,30 @@ const drawPdfTable = (doc, headers, rows) => {
   const startX = 48;
   const printableWidth = 500;
   const columnWidth = printableWidth / headers.length;
-  const rowHeight = 22;
+  const cellPaddingX = 8;
+  const lineHeight = 10;
+  const headerRowHeight = 22;
   const bottomLimit = 740;
 
   const renderTableHeader = (y) => {
-    doc.rect(startX, y, printableWidth, rowHeight).fill(PDF_COLORS.NAVY);
+    doc.rect(startX, y, printableWidth, headerRowHeight).fill(PDF_COLORS.NAVY);
     headers.forEach((h, i) => {
       doc.fillColor("#ffffff").fontSize(9).font("Helvetica-Bold")
-        .text(h.label, startX + (i * columnWidth) + 8, y + 6, { width: columnWidth - 10 });
+        .text(h.label, startX + (i * columnWidth) + cellPaddingX, y + 6, { width: columnWidth - 10 });
     });
-    return y + rowHeight;
+    return y + headerRowHeight;
+  };
+
+  const getRowHeight = (row) => {
+    let lines = 1;
+    headers.forEach((h, i) => {
+      const width = columnWidth - 10;
+      doc.fontSize(8).font("Helvetica");
+      const wrapped = doc.heightOfString(String(row[h.key] ?? "-"), { width });
+      const cellLines = Math.max(1, Math.ceil(wrapped / lineHeight));
+      if (cellLines > lines) lines = cellLines;
+    });
+    return Math.max(headerRowHeight, lines * lineHeight + 8);
   };
 
   if (doc.y > bottomLimit - 40) {
@@ -96,7 +110,9 @@ const drawPdfTable = (doc, headers, rows) => {
   let currentY = renderTableHeader(doc.y);
 
   rows.forEach((row, rowIndex) => {
-    if (currentY > bottomLimit) {
+    const rowHeight = getRowHeight(row);
+
+    if (currentY + rowHeight > bottomLimit) {
       doc.addPage();
       currentY = renderTableHeader(50);
     }
@@ -108,7 +124,7 @@ const drawPdfTable = (doc, headers, rows) => {
     headers.forEach((h, colIndex) => {
       const val = String(row[h.key] ?? "-");
       doc.fillColor(PDF_COLORS.TEXT).fontSize(8).font("Helvetica")
-        .text(val, startX + (colIndex * columnWidth) + 8, currentY + 6, { width: columnWidth - 10 });
+        .text(val, startX + (colIndex * columnWidth) + cellPaddingX, currentY + 6, { width: columnWidth - 10 });
     });
 
     doc.strokeColor(PDF_COLORS.GRAY).lineWidth(0.5).moveTo(startX, currentY + rowHeight).lineTo(startX + printableWidth, currentY + rowHeight).stroke();

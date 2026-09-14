@@ -158,11 +158,22 @@ const ProductsPage = () => {
                     </div>
                     <div className="text-right">
                       <p className="text-[10px] text-text-soft font-bold uppercase mb-0.5 text-right">Stock</p>
-                      <div className={`flex items-center justify-end gap-1.5 font-bold ${product.stock < 5 ? 'text-red-500' : 'text-green-600'}`}>
-                        {product.stock < 5 ? <AlertCircle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
-                        <span className="text-lg">{product.stock}</span>
-                        <span className="text-[10px] pt-1">{product.unit_type === 'measurement' ? (product.base_unit || 'Box') : 'Units'}</span>
-                      </div>
+                      {(() => {
+                        const minStock = product.min_stock ?? 5;
+                        const low = product.stock <= minStock;
+                        return (
+                          <div className={`flex items-center justify-end gap-1.5 font-bold ${low ? 'text-red-500' : 'text-green-600'}`}>
+                            {low ? <AlertCircle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+                            <span className="text-lg">{product.stock}</span>
+                            <span className="text-[10px] pt-1">{product.unit_type === 'measurement' ? (product.base_unit || 'Box') : 'Units'}</span>
+                            {low && (
+                              <span className="px-1.5 py-0.5 rounded-full bg-red-100 text-red-600 text-[8px] font-black uppercase tracking-wider ml-1">
+                                Low
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
 

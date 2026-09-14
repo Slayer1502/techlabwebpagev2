@@ -1,4 +1,5 @@
 const notificationService = require("../services/notificationService");
+const { broadcastToUser } = require("../ws");
 
 const getNotifications = async (req, res) => {
   try {
@@ -9,6 +10,13 @@ const getNotifications = async (req, res) => {
   }
 };
 
+const pushNotificationsToUser = (userId, notifications) => {
+  try {
+    broadcastToUser(userId, "notifications", { notifications });
+  } catch (e) {}
+};
+
 module.exports = {
-  getNotifications
+  getNotifications,
+  pushNotificationsToUser,
 };

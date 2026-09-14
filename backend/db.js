@@ -398,6 +398,12 @@ const initializeDatabase = () => {
     "device_type TEXT," +
     "description TEXT," +
     "frequency TEXT NOT NULL DEFAULT 'quarterly'," +
+    "amount REAL DEFAULT 0," +
+    "start_date TEXT," +
+    "end_date TEXT," +
+    "technician_id TEXT," +
+    "technician_name TEXT," +
+    "visits_completed INTEGER NOT NULL DEFAULT 0," +
     "next_due_date TEXT NOT NULL," +
     "last_completed TEXT," +
     "active INTEGER NOT NULL DEFAULT 1," +
@@ -785,6 +791,26 @@ const initializeDatabase = () => {
   }
   if (!sqiColsNow.includes("sq_number")) {
     db.exec("ALTER TABLE sales_quotation_items ADD COLUMN sq_number TEXT");
+  }
+
+  const recColsNow = db.prepare("PRAGMA table_info(recurring_schedules)").all().map(c => c.name);
+  if (!recColsNow.includes("amount")) {
+    db.exec("ALTER TABLE recurring_schedules ADD COLUMN amount REAL DEFAULT 0");
+  }
+  if (!recColsNow.includes("start_date")) {
+    db.exec("ALTER TABLE recurring_schedules ADD COLUMN start_date TEXT");
+  }
+  if (!recColsNow.includes("end_date")) {
+    db.exec("ALTER TABLE recurring_schedules ADD COLUMN end_date TEXT");
+  }
+  if (!recColsNow.includes("technician_id")) {
+    db.exec("ALTER TABLE recurring_schedules ADD COLUMN technician_id TEXT");
+  }
+  if (!recColsNow.includes("technician_name")) {
+    db.exec("ALTER TABLE recurring_schedules ADD COLUMN technician_name TEXT");
+  }
+  if (!recColsNow.includes("visits_completed")) {
+    db.exec("ALTER TABLE recurring_schedules ADD COLUMN visits_completed INTEGER NOT NULL DEFAULT 0");
   }
 };
 
@@ -1450,6 +1476,16 @@ try {
   db.exec("CREATE INDEX IF NOT EXISTS idx_sales_quotes_enquiry ON sales_quotations(enquiry_id)");
 } catch (e) {
   console.error("sales_quotations enquiry_id migration failed:", e.message);
+}
+
+// Remember the purchase order(s) linked when a sales quotation is converted to a sale
+try {
+  const sqCols = db.prepare("PRAGMA table_info(sales_quotations)").all().map(c => c.name);
+  if (!sqCols.includes("po_ids")) {
+    db.exec("ALTER TABLE sales_quotations ADD COLUMN po_ids TEXT");
+  }
+} catch (e) {
+  console.error("sales_quotations po_ids migration failed:", e.message);
 }
 
 // Service-request supplier RFQ flow:
