@@ -234,6 +234,7 @@ const confirmEnquiry = (id, advanceData, updatedBy) => {
         JSON.stringify(options),
         updatedBy, id
     );
+    db.prepare("UPDATE sales_quotations SET status = 'converted', converted_at = COALESCE(converted_at, ?) WHERE enquiry_id = ?").run(nowIso(), id);
   });
   transaction();
   return { poId: poIds[0] || null, poIds, poNumbers };
@@ -241,8 +242,12 @@ const confirmEnquiry = (id, advanceData, updatedBy) => {
 
 const deliverEnquiry = (id, paymentData, updatedBy) => {
   const { received, mode, date } = paymentData;
-  db.prepare("UPDATE enquiries SET status = 'delivered', final_received = ?, final_mode = ?, final_date = ?, updated_by = ? WHERE id = ?")
-    .run(Number(received) || 0, mode || null, date || nowIso().slice(0, 10), updatedBy, id);
+  const transaction = db.transaction(() => {
+    db.prepare("UPDATE enquiries SET status = 'delivered', final_received = ?, final_mode = ?, final_date = ?, updated_by = ? WHERE id = ?")
+      .run(Number(received) || 0, mode || null, date || nowIso().slice(0, 10), updatedBy, id);
+    db.prepare("UPDATE sales_quotations SET status = 'converted', converted_at = COALESCE(converted_at, ?) WHERE enquiry_id = ?").run(nowIso(), id);
+  });
+  transaction();
 };
 
 const recordPayment = (id, paymentData, updatedBy) => {
