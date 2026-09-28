@@ -86,9 +86,9 @@ const receivePurchaseOrder = (id, body) => {
           pid = makeId("product");
           const price = Math.round((Number(it.unit_cost) || 0) * 1.5);
           db.prepare(`
-            INSERT INTO products (id, type, name, price, description, discount_percent, active, stock, gst_rate)
-            VALUES (?, ?, ?, ?, ?, 0, 1, ?, ?)
-          `).run(pid, "Accessory", String(it.product_name).trim(), price, `Automatically created from ${po.po_number}`, Number(it.quantity) || 1, 18);
+            INSERT INTO products (id, type, name, price, description, discount_percent, active, stock, gst_rate, cost_price)
+            VALUES (?, ?, ?, ?, ?, 0, 1, ?, ?, ?)
+          `).run(pid, "Accessory", String(it.product_name).trim(), price, `Automatically created from ${po.po_number}`, Number(it.quantity) || 1, 18, Math.round(Number(it.unit_cost) || 0));
         }
       }
 
@@ -105,7 +105,8 @@ const receivePurchaseOrder = (id, body) => {
 
       createdPurchaseIds.push({ id: newPurchaseId, total: itemTotal });
       if (pid) {
-        db.prepare("UPDATE products SET stock = stock + ? WHERE id = ?").run(it.quantity, pid);
+        db.prepare("UPDATE products SET stock = stock + ?, cost_price = ? WHERE id = ?")
+          .run(it.quantity, Math.round(Number(it.unit_cost) || 0), pid);
       }
     }
 
@@ -123,6 +124,12 @@ const receivePurchaseOrder = (id, body) => {
     }
 
     db.prepare("UPDATE purchase_orders SET status = 'received' WHERE id = ?").run(id);
+
+    if (advanceAmount > 0) {
+      const poStatus = advanceAmount >= po.total_amount ? "paid" : "partial";
+      db.prepare("UPDATE purchase_orders SET amount_paid = ?, payment_status = ?, payment_mode = ?, payment_date = ? WHERE id = ?")
+        .run(advanceAmount, poStatus, advanceMode, advanceDate, id);
+    }
 
     if (po.service_request_id) {
       const request = db.prepare("SELECT requested_parts, part_request_status, buyout_requisition FROM service_requests WHERE id = ?").get(po.service_request_id);
@@ -157,6 +164,61 @@ const receivePurchaseOrder = (id, body) => {
   return { advanceAmount };
 };
 
+const recordPurchaseOrderPayment = (poId, data) => {
+  const po = db.prepare("SELECT * FROM purchase_orders WHERE id = ?").get(poId);
+  if (!po) throw new Error("Purchase order not found");
+  if (po.status === "cancelled") throw new Error("Cannot record payment on a cancelled PO");
+  if (po.status !== "received") throw new Error("Record payment after the PO has been received");
+
+  const total = Number(po.total_amount) || 0;
+  const alreadyPaid = Number(po.amount_paid) || 0;
+  let amount = Math.round(Number(data.amount) || 0);
+  if (!(amount > 0)) throw new Error("Payment amount must be at least 1");
+  if (amount > total - alreadyPaid) throw new Error(`Payment amount exceeds balance (${total - alreadyPaid})`);
+
+  const newPaid = alreadyPaid + amount;
+  const status = newPaid >= total ? "paid" : "partial";
+
+  const transaction = db.transaction(() => {
+    db.prepare("UPDATE purchase_orders SET amount_paid = ?, payment_status = ?, payment_mode = ?, payment_date = ? WHERE id = ?")
+      .run(newPaid, status, data.paymentMode || "Cash", data.paymentDate || nowIso().slice(0, 10), poId);
+
+    const items = db.prepare("SELECT id, total_cost, amount_paid FROM purchases WHERE invoice_number = ?").all(po.po_number);
+    const sum = items.reduce((s, x) => s + (x.total_cost || 0), 0);
+    if (sum > 0) {
+      let remaining = newPaid;
+      items.forEach((it, i) => {
+        let amt = i === items.length - 1 ? remaining : Math.round(newPaid * (it.total_cost || 0) / sum);
+        amt = Math.max(0, Math.min(amt, it.total_cost || 0));
+        const itemStatus = amt >= (it.total_cost || 0) ? "paid" : (amt > 0 ? "partial" : "pending");
+        db.prepare("UPDATE purchases SET amount_paid = ?, payment_status = ?, payment_mode = ?, payment_date = ? WHERE id = ?")
+          .run(amt, itemStatus, data.paymentMode || "Cash", data.paymentDate || nowIso().slice(0, 10), it.id);
+        remaining -= amt;
+      });
+    }
+  });
+  transaction();
+  return { amount_paid: newPaid, balance: total - newPaid, payment_status: status };
+};
+
+const backfillPurchaseOrderPayments = () => {
+  const pos = db.prepare("SELECT * FROM purchase_orders WHERE status = 'received'").all();
+  let updated = 0;
+  for (const po of pos) {
+    const rows = db.prepare("SELECT total_cost, amount_paid, payment_mode, payment_date FROM purchases WHERE invoice_number = ?").all(po.po_number);
+    const paid = rows.reduce((s, r) => s + (Number(r.amount_paid) || 0), 0);
+    if (paid > 0) {
+      const status = paid >= (po.total_amount || 0) ? "paid" : "partial";
+      const mode = rows.find(r => r.payment_mode)?.payment_mode || null;
+      const date = rows.find(r => r.payment_date)?.payment_date || null;
+      db.prepare("UPDATE purchase_orders SET amount_paid = ?, payment_status = ?, payment_mode = ?, payment_date = ? WHERE id = ?")
+        .run(paid, status, mode, date, po.id);
+      updated++;
+    }
+  }
+  return updated;
+};
+
 const deletePurchaseOrder = (id, force) => {
   const po = db.prepare("SELECT id, status, po_number FROM purchase_orders WHERE id = ?").get(id);
   if (!po) throw new Error("Purchase order not found");
@@ -185,5 +247,7 @@ module.exports = {
   getPurchaseOrderById,
   createPurchaseOrder,
   receivePurchaseOrder,
+  recordPurchaseOrderPayment,
+  backfillPurchaseOrderPayments,
   deletePurchaseOrder
 };

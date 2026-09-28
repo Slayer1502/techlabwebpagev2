@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, IndianRupee, Loader2, HandCoins, CheckCircle2 } from 'lucide-react';
 import { Enquiry } from '../types';
 import { formatCurrencyValue, getEnquiryQuoteTotal } from '../utils/helpers';
 import { enquiryService } from '../services/enquiryService';
+import { challanService } from '../services/challanService';
 import { toast } from '../utils/toast';
 
 interface Props {
@@ -18,10 +19,34 @@ const DeliverEnquiryModal = ({ enquiry, onClose, onSuccess }: Props) => {
   const [collectPayment, setCollectPayment] = useState(false);
   const [amount, setAmount] = useState(0);
   const [mode, setMode] = useState('Cash');
+  const [dcTotal, setDcTotal] = useState<number | null>(null);
 
   const quoteTotal = getEnquiryQuoteTotal(enquiry.quote_options);
+
+  useEffect(() => {
+    const fetchDc = async () => {
+      try {
+        const dc = await challanService.getChallanForSource('enquiry', enquiry.id);
+        if (dc && dc.total_value != null) {
+          const val = Number(dc.total_value);
+          setDcTotal(val);
+          const adv = enquiry.customer_advance_amount || 0;
+          setAmount(Math.max(0, val - adv));
+        } else {
+          const adv = enquiry.customer_advance_amount || 0;
+          setAmount(Math.max(0, (quoteTotal || 0) - adv));
+        }
+      } catch {
+        const adv = enquiry.customer_advance_amount || 0;
+        setAmount(Math.max(0, (quoteTotal || 0) - adv));
+      }
+    };
+    fetchDc();
+  }, [enquiry.id, quoteTotal, enquiry.customer_advance_amount]);
+
+  const effectiveTotal = dcTotal !== null ? dcTotal : quoteTotal;
   const advanceCollected = enquiry.customer_advance_amount || 0;
-  const balance = Math.max(0, (quoteTotal || 0) - advanceCollected);
+  const balance = Math.max(0, effectiveTotal - advanceCollected);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,7 +82,10 @@ const DeliverEnquiryModal = ({ enquiry, onClose, onSuccess }: Props) => {
             <div className="flex justify-between items-center">
               <div>
                 <p className="text-[10px] text-gray-400 uppercase font-bold">{enquiry.customer_name}</p>
-                <p className="text-lg font-black mt-0.5">{formatCurrencyValue(quoteTotal)}</p>
+                <p className="text-lg font-black mt-0.5">
+                  {formatCurrencyValue(effectiveTotal)}
+                  {dcTotal !== null && <span className="text-[9px] text-blue-300 font-normal ml-1">(via D.C.)</span>}
+                </p>
               </div>
               <div className="text-right">
                 <p className="text-[10px] text-gray-400 uppercase font-bold">Balance Due</p>

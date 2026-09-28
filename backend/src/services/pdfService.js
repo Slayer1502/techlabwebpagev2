@@ -7,6 +7,17 @@ const { PDF_COLORS, getBusinessSettingsMap, drawPdfHeader, drawPdfFooter, drawPd
 const { fetchQrCode } = require("../utils/qrHelper");
 const { formatDateValue, formatCurrencyValue } = require("../utils/helpers");
 
+const drawBankTransferDetails = (doc, bank, x, y) => {
+  if (!bank) return;
+  doc.fontSize(7).font("Helvetica-Bold").fillColor(PDF_COLORS.NAVY)
+    .text("BANK TRANSFER (RTGS / NEFT)", x, y, { width: 145 });
+  doc.font("Helvetica").fillColor(PDF_COLORS.TEXT)
+    .text(`Bank: ${bank.bank_name || "-"}`, x, y + 11)
+    .text(`A/C: ${bank.account_number || "-"}`, x, y + 21)
+    .text(`IFSC: ${bank.ifsc || "-"}`, x, y + 31)
+    .text(`Holder: ${bank.account_holder || "-"}`, x, y + 41);
+};
+
 const reportsDir = path.join(__dirname, "../../../reports");
 
 const generateOrderInvoice = async (orderId) => {
@@ -68,25 +79,60 @@ const generateOrderInvoice = async (orderId) => {
 
   doc.moveDown(3);
   const customerStartY = doc.y;
-  doc.rect(48, customerStartY, 250, 70).fill(PDF_COLORS.LIGHT_GRAY).stroke(PDF_COLORS.GRAY);
-  doc.fillColor(PDF_COLORS.NAVY).fontSize(10).font("Helvetica-Bold").text("BILL TO:", 58, customerStartY + 10);
-  doc.fillColor(PDF_COLORS.TEXT).fontSize(11).text(order.customer_name, 58, customerStartY + 25);
-  doc.fontSize(10).font("Helvetica").text(`Mobile: ${order.customer_mobile}`, 58, customerStartY + 40);
-  if (order.customer_address) doc.fontSize(9).text(order.customer_address, 58, customerStartY + 53);
 
-  doc.rect(305, customerStartY, 242, 70).fill(PDF_COLORS.LIGHT_GRAY).stroke(PDF_COLORS.GRAY);
-  doc.fillColor(PDF_COLORS.NAVY).fontSize(10).font("Helvetica-Bold").text("ORDER DETAILS:", 315, customerStartY + 10);
-  doc.fillColor(PDF_COLORS.TEXT).fontSize(9).font("Helvetica").text(`Status: ${order.status}`, 315, customerStartY + 25);
-  doc.text(`Payment: ${order.payment_status === 'paid' ? 'Paid' + (order.payment_mode ? ` (${order.payment_mode})` : '') : 'Pending'}`, 315, customerStartY + 37);
-  if (order.payment_mode && order.payment_date) doc.text(`Paid on: ${formatDateValue(order.payment_date)}`, 315, customerStartY + 49);
+  const customerGstin = isGst && order.customer_gstin ? String(order.customer_gstin) : null;
+
+  const wrapLines = (text, size, width) => {
+    const charsPerLine = Math.max(1, Math.floor(width / (size * 0.48)));
+    const words = String(text || "").split(/\s+/).filter(Boolean);
+    const lines = [];
+    let current = "";
+    for (const word of words) {
+      const next = current ? `${current} ${word}` : word;
+      if (next.length > charsPerLine && current) { lines.push(current); current = word; }
+      else current = next;
+    }
+    if (current) lines.push(current);
+    return lines;
+  };
+
+  const nameLines = wrapLines(order.customer_name, 9.5, 230);
+  const addrLines = wrapLines(order.customer_address, 8, 226);
+
+  const nameH = nameLines.length * 13;
+  const addrH = addrLines.length ? addrLines.length * 10 : 0;
+  const mobileY = 16 + nameH;
+  const addrY = mobileY + 15;
+  const gstinY = addrY + addrH + (addrLines.length ? 5 : 0);
+  const billToHeight = Math.max(70, (customerGstin ? gstinY + 14 : addrY + addrH) + 8);
+
+  doc.rect(48, customerStartY, 250, billToHeight).fill(PDF_COLORS.LIGHT_GRAY).stroke(PDF_COLORS.GRAY);
+  doc.fillColor(PDF_COLORS.NAVY).fontSize(8).font("Helvetica-Bold").text("BILL TO:", 58, customerStartY + 7);
+  doc.fillColor(PDF_COLORS.TEXT).fontSize(9.5).font("Helvetica").text(nameLines.join("\n"), 58, customerStartY + 16, { lineGap: 2 });
+  doc.fillColor(PDF_COLORS.TEXT).fontSize(8.5).font("Helvetica").text(`Mobile: ${order.customer_mobile}`, 58, customerStartY + mobileY);
+  if (addrLines.length) {
+    doc.fillColor(PDF_COLORS.TEXT).fontSize(8).font("Helvetica").text(addrLines.join("\n"), 58, customerStartY + addrY, { lineGap: 2 });
+  }
+  if (customerGstin) {
+    doc.fillColor(PDF_COLORS.TEXT).fontSize(8.5).font("Helvetica-Bold").text(`GSTIN: ${customerGstin}`, 58, customerStartY + gstinY);
+  }
+
+  doc.rect(305, customerStartY, 242, billToHeight).fill(PDF_COLORS.LIGHT_GRAY).stroke(PDF_COLORS.GRAY);
+  doc.fillColor(PDF_COLORS.NAVY).fontSize(8).font("Helvetica-Bold").text("ORDER DETAILS:", 315, customerStartY + 7);
+  doc.fillColor(PDF_COLORS.TEXT).fontSize(8.5).font("Helvetica").text(`Status: ${order.status}`, 315, customerStartY + 16);
+  doc.text(`Payment: ${order.payment_status === 'paid' ? 'Paid' + (order.payment_mode ? ` (${order.payment_mode})` : '') : 'Pending'}`, 315, customerStartY + 28);
+  if (order.payment_mode && order.payment_date) doc.text(`Paid on: ${formatDateValue(order.payment_date)}`, 315, customerStartY + 40);
+
+  doc.y = customerStartY + billToHeight;
 
   doc.moveDown(5);
   const tableTop = doc.y;
   doc.rect(48, tableTop, 500, 25).fill(PDF_COLORS.NAVY);
-  doc.fillColor("#ffffff").fontSize(10).font("Helvetica-Bold").text("#", 58, tableTop + 8, { width: 25 });
-  doc.text("Description of Goods / Services", 85, tableTop + 8, { width: 260 });
-  doc.text("Qty", 345, tableTop + 8, { width: 35, align: "right" });
-  doc.text("Rate", 385, tableTop + 8, { width: 65, align: "right" });
+  doc.fillColor("#ffffff").fontSize(10).font("Helvetica-Bold").text("#", 58, tableTop + 8, { width: 20 });
+  doc.text("Description of Goods / Services", 82, tableTop + 8, { width: 150 });
+  doc.text("HSN", 237, tableTop + 8, { width: 60 });
+  doc.text("Qty", 302, tableTop + 8, { width: 32, align: "right" });
+  doc.text("Rate", 345, tableTop + 8, { width: 60, align: "right" });
   doc.text("Amount (INR)", 457, tableTop + 8, { width: 90, align: "right" });
 
   let itemY = tableTop + 40;
@@ -97,22 +143,24 @@ const generateOrderInvoice = async (orderId) => {
       doc.addPage();
       itemY = 50;
       doc.rect(48, itemY, 500, 25).fill(PDF_COLORS.NAVY);
-      doc.fillColor("#ffffff").fontSize(10).font("Helvetica-Bold").text("#", 58, itemY + 8, { width: 25 });
-      doc.text("Description of Goods / Services", 85, itemY + 8, { width: 260 });
-      doc.text("Qty", 345, itemY + 8, { width: 35, align: "right" });
-      doc.text("Rate", 385, itemY + 8, { width: 65, align: "right" });
+      doc.fillColor("#ffffff").fontSize(10).font("Helvetica-Bold").text("#", 58, itemY + 8, { width: 20 });
+      doc.text("Description of Goods / Services", 82, itemY + 8, { width: 150 });
+      doc.text("HSN", 237, itemY + 8, { width: 60 });
+      doc.text("Qty", 302, itemY + 8, { width: 32, align: "right" });
+      doc.text("Rate", 345, itemY + 8, { width: 60, align: "right" });
       doc.text("Amount (INR)", 457, itemY + 8, { width: 90, align: "right" });
       itemY += 40;
     }
 
     let desc = String(it.product_name || "-");
-    if (isGst && it.hsn_code) desc += ` (HSN: ${it.hsn_code})`;
+    const hsnVal = (isGst && it.hsn_code) ? String(it.hsn_code) : "-";
     const lineTotal = it.price * it.qty;
 
-    doc.fillColor(PDF_COLORS.TEXT).fontSize(9).font("Helvetica").text(String(idx + 1), 58, itemY, { width: 25 });
-    doc.text(desc, 85, itemY, { width: 260 });
-    doc.text(String(it.qty), 345, itemY, { width: 35, align: "right" });
-    doc.text(formatCurrencyValue(it.price).replace("Rs. ", ""), 385, itemY, { width: 65, align: "right" });
+    doc.fillColor(PDF_COLORS.TEXT).fontSize(9).font("Helvetica").text(String(idx + 1), 58, itemY, { width: 20 });
+    doc.text(desc, 82, itemY, { width: 150 });
+    doc.text(hsnVal, 237, itemY, { width: 60 });
+    doc.text(String(it.qty), 302, itemY, { width: 32, align: "right" });
+    doc.text(formatCurrencyValue(it.price).replace("Rs. ", ""), 345, itemY, { width: 60, align: "right" });
     doc.font("Helvetica-Bold").text(formatCurrencyValue(lineTotal).replace("Rs. ", ""), 457, itemY, { width: 90, align: "right" });
     itemY += 22;
   });
@@ -155,6 +203,7 @@ const generateOrderInvoice = async (orderId) => {
       doc.image(qrBuffer, 48, footerY, { width: 75 });
       doc.fillColor(PDF_COLORS.NAVY).fontSize(8).font("Helvetica-Bold").text("SCAN TO PAY VIA UPI", 48, footerY + 80);
       doc.fontSize(7).font("Helvetica").text(primaryBank.upi_id, 48, footerY + 90);
+      drawBankTransferDetails(doc, primaryBank, 132, footerY);
     } catch (qrErr) {
       console.warn("[PDF] Unable to render UPI QR image:", qrErr.message);
     }
@@ -162,9 +211,9 @@ const generateOrderInvoice = async (orderId) => {
 
   if (reviewQrBuffer) {
     try {
-      doc.image(reviewQrBuffer, 175, footerY, { width: 75 });
-      doc.fillColor(PDF_COLORS.BLUE).fontSize(8).font("Helvetica-Bold").text("REVIEW US ON GOOGLE", 165, footerY + 80, { width: 95, align: "center" });
-      doc.fontSize(7).font("Helvetica").text("Scan to leave 5 stars!", 165, footerY + 90, { width: 95, align: "center" });
+      doc.image(reviewQrBuffer, 285, footerY, { width: 75 });
+      doc.fillColor(PDF_COLORS.BLUE).fontSize(8).font("Helvetica-Bold").text("REVIEW US ON GOOGLE", 285, footerY + 80, { width: 95, align: "center" });
+      doc.fontSize(7).font("Helvetica").text("Scan to leave 5 stars!", 285, footerY + 90, { width: 95, align: "center" });
     } catch (qrErr) {
       console.warn("[PDF] Unable to render Review QR image:", qrErr.message);
     }
@@ -344,6 +393,7 @@ const generateServiceBill = async (requestId) => {
       doc.image(qrBuffer, 48, footerY, { width: 75 });
       doc.fillColor(PDF_COLORS.NAVY).fontSize(8).font("Helvetica-Bold").text("SCAN TO PAY VIA UPI", 48, footerY + 80);
       doc.fontSize(7).font("Helvetica").text(primaryBank.upi_id, 48, footerY + 90);
+      drawBankTransferDetails(doc, primaryBank, 132, footerY);
     } catch (qrErr) {
       console.warn("[PDF] Unable to render UPI QR image:", qrErr.message);
     }
@@ -351,9 +401,9 @@ const generateServiceBill = async (requestId) => {
 
   if (reviewQrBuffer) {
     try {
-      doc.image(reviewQrBuffer, 175, footerY, { width: 75 });
-      doc.fillColor(PDF_COLORS.BLUE).fontSize(8).font("Helvetica-Bold").text("REVIEW US ON GOOGLE", 165, footerY + 80, { width: 95, align: "center" });
-      doc.fontSize(7).font("Helvetica").text("Scan to leave 5 stars!", 165, footerY + 90, { width: 95, align: "center" });
+      doc.image(reviewQrBuffer, 285, footerY, { width: 75 });
+      doc.fillColor(PDF_COLORS.BLUE).fontSize(8).font("Helvetica-Bold").text("REVIEW US ON GOOGLE", 285, footerY + 80, { width: 95, align: "center" });
+      doc.fontSize(7).font("Helvetica").text("Scan to leave 5 stars!", 285, footerY + 90, { width: 95, align: "center" });
     } catch (qrErr) {
       console.warn("[PDF] Unable to render Review QR image:", qrErr.message);
     }
@@ -622,6 +672,7 @@ const generateChallanPdf = async (challanId) => {
       doc.image(qrBuffer, 48, footerY, { width: 75 });
       doc.fillColor(PDF_COLORS.NAVY).fontSize(8).font("Helvetica-Bold").text("SCAN TO PAY VIA UPI", 48, footerY + 80);
       doc.fontSize(7).font("Helvetica").text(primaryBank.upi_id, 48, footerY + 90);
+      drawBankTransferDetails(doc, primaryBank, 132, footerY);
     } catch (qrErr) {
       console.warn("[PDF] Unable to render UPI QR image:", qrErr.message);
     }
@@ -629,9 +680,9 @@ const generateChallanPdf = async (challanId) => {
 
   if (reviewQrBuffer) {
     try {
-      doc.image(reviewQrBuffer, 175, footerY, { width: 75 });
-      doc.fillColor(PDF_COLORS.BLUE).fontSize(8).font("Helvetica-Bold").text("REVIEW US ON GOOGLE", 165, footerY + 80, { width: 95, align: "center" });
-      doc.fontSize(7).font("Helvetica").text("Scan to leave 5 stars!", 165, footerY + 90, { width: 95, align: "center" });
+      doc.image(reviewQrBuffer, 285, footerY, { width: 75 });
+      doc.fillColor(PDF_COLORS.BLUE).fontSize(8).font("Helvetica-Bold").text("REVIEW US ON GOOGLE", 285, footerY + 80, { width: 95, align: "center" });
+      doc.fontSize(7).font("Helvetica").text("Scan to leave 5 stars!", 285, footerY + 90, { width: 95, align: "center" });
     } catch (qrErr) {
       console.warn("[PDF] Unable to render Review QR image:", qrErr.message);
     }
@@ -656,7 +707,14 @@ const generateQuotationPdf = async (quotationId) => {
   const bizEmail = settings.business_email || 'service@techlab.in';
   const bizGstin = settings.gstin || '';
 
-  const doc = new PDFDocument({ size: "A4", margin: 48 });
+  const primaryBank = db.prepare("SELECT * FROM bank_accounts WHERE is_primary = 1 LIMIT 1").get();
+  let qrBuffer = null;
+  if (primaryBank && primaryBank.upi_id && primaryBank.show_qr) {
+    const upiUrl = `upi://pay?pa=${primaryBank.upi_id}&pn=${encodeURIComponent(bizName)}&cu=INR`;
+    qrBuffer = await fetchQrCode(upiUrl);
+  }
+
+  const doc = new PDFDocument({ size: "A4", margin: 48, bufferPages: true });
 
   doc.fillColor(PDF_COLORS.NAVY).fontSize(24).font("Helvetica-Bold").text(bizName, 48, 50);
   doc.fillColor(PDF_COLORS.TEXT_SOFT).fontSize(9).font("Helvetica").text("Computers, Laptops, CCTV & IT Solutions", 48, 75);
@@ -674,13 +732,48 @@ const generateQuotationPdf = async (quotationId) => {
 
   doc.moveDown(3);
   const customerStartY = doc.y;
-  doc.rect(48, customerStartY, 250, 70).fill(PDF_COLORS.LIGHT_GRAY).stroke(PDF_COLORS.GRAY);
+  const boxHeight = 95;
+
+  // Left: Customer Box
+  doc.rect(48, customerStartY, 250, boxHeight).fill(PDF_COLORS.LIGHT_GRAY).stroke(PDF_COLORS.GRAY);
   doc.fillColor(PDF_COLORS.NAVY).fontSize(10).font("Helvetica-Bold").text("CUSTOMER:", 58, customerStartY + 10);
   doc.fillColor(PDF_COLORS.TEXT).fontSize(11).text(quotation.customer_name || "-", 58, customerStartY + 25);
-  doc.fontSize(10).font("Helvetica").text(`Mobile: ${quotation.customer_mobile || "-"}`, 58, customerStartY + 40);
-  if (quotation.customer_address) doc.fontSize(9).text(quotation.customer_address, 58, customerStartY + 53);
+  doc.fontSize(10).font("Helvetica").text(`Mobile: ${quotation.customer_mobile || "-"}`, 58, customerStartY + 42);
+  if (quotation.customer_address) {
+    doc.fontSize(8.5).text(quotation.customer_address, 58, customerStartY + 58, { width: 230, height: 32 });
+  }
 
-  doc.moveDown(5);
+  // Right: Advance Payment & Bank Info Box (Quotation Only - Right next to Customer section)
+  doc.rect(305, customerStartY, 242, boxHeight).fill(PDF_COLORS.LIGHT_GRAY).stroke(PDF_COLORS.GRAY);
+  doc.fillColor(PDF_COLORS.NAVY).fontSize(9).font("Helvetica-Bold").text("ADVANCE PAYMENT (UPI / RTGS):", 315, customerStartY + 10);
+
+  if (primaryBank) {
+    if (qrBuffer) {
+      try {
+        doc.image(qrBuffer, 315, customerStartY + 24, { width: 62, height: 62 });
+      } catch (e) {
+        // fallback
+      }
+      const textX = 383;
+      doc.fontSize(7.5).font("Helvetica-Bold").fillColor(PDF_COLORS.NAVY).text(`UPI: ${primaryBank.upi_id || "-"}`, textX, customerStartY + 24, { width: 155 });
+      doc.font("Helvetica").fillColor(PDF_COLORS.TEXT).text(`Bank: ${primaryBank.bank_name || "-"}`, textX, customerStartY + 36, { width: 155 });
+      doc.text(`A/C: ${primaryBank.account_number || "-"}`, textX, customerStartY + 48, { width: 155 });
+      doc.text(`IFSC: ${primaryBank.ifsc || "-"}`, textX, customerStartY + 60, { width: 155 });
+      doc.text(`Holder: ${primaryBank.account_holder || "-"}`, textX, customerStartY + 72, { width: 155 });
+    } else {
+      const textX = 315;
+      doc.fontSize(7.5).font("Helvetica-Bold").fillColor(PDF_COLORS.NAVY).text(`UPI: ${primaryBank.upi_id || "-"}`, textX, customerStartY + 24, { width: 220 });
+      doc.font("Helvetica").fillColor(PDF_COLORS.TEXT).text(`Bank: ${primaryBank.bank_name || "-"}`, textX, customerStartY + 36, { width: 220 });
+      doc.text(`A/C: ${primaryBank.account_number || "-"}`, textX, customerStartY + 48, { width: 220 });
+      doc.text(`IFSC: ${primaryBank.ifsc || "-"}`, textX, customerStartY + 60, { width: 220 });
+      doc.text(`Holder: ${primaryBank.account_holder || "-"}`, textX, customerStartY + 72, { width: 220 });
+    }
+  } else {
+    doc.fontSize(8).font("Helvetica").fillColor(PDF_COLORS.TEXT_SOFT).text("No primary bank account configured.", 315, customerStartY + 40, { width: 220 });
+  }
+
+  doc.y = customerStartY + boxHeight + 15;
+
   const tableTop = doc.y;
   doc.rect(48, tableTop, 500, 25).fill(PDF_COLORS.NAVY);
   doc.fillColor("#ffffff").fontSize(10).font("Helvetica-Bold").text("#", 58, tableTop + 8, { width: 30 });
@@ -730,6 +823,10 @@ const generateQuotationPdf = async (quotationId) => {
     "This quotation is valid until the date shown above. Prices include applicable taxes unless stated otherwise. Subject to Karur jurisdiction.",
     48, doc.y + 20
   );
+
+  const sigY = Math.max(doc.y + 25, 710);
+  doc.strokeColor(PDF_COLORS.GRAY).lineWidth(0.5).dash(5, { space: 10 }).moveTo(400, sigY).lineTo(547, sigY).stroke();
+  doc.undash().fontSize(10).font("Helvetica-Bold").fillColor(PDF_COLORS.NAVY).text("Authorized Signatory", 400, sigY + 5, { width: 147, align: "center" });
 
   drawPdfFooter(doc);
 

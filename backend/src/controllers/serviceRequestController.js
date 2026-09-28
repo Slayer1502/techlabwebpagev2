@@ -242,7 +242,7 @@ const generateBill = async (req, res) => {
   const billSgst = billGstRate ? Math.round(billTaxable * billGstRate / 2 / 100) : 0;
   const billGstTotal = billCgst + billSgst;
   const billDate = String(requestedBillDate || "").slice(0, 10) || String(request.completed_at || request.created_at || "").slice(0, 10) || nowIso().slice(0, 10);
-  const billNumber = nextBillNumber(billDate);
+  const billNumber = nextBillNumber(billDate, billGstTotal > 0);
 
   serviceRequestService.generateBill(req.params.id, {
       billNumber, billDate, billAmount, billDetails, billTaxable, billCgst, billSgst, billGstTotal

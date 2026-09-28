@@ -1,5 +1,5 @@
-import React from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   X,
   Smartphone,
@@ -21,6 +21,7 @@ import { formatCurrencyValue, formatDateValue } from '../utils/helpers';
 import { orderService } from '../services/orderService';
 import api from '../utils/api';
 import { Product } from '../types';
+import RecordPaymentModal from './RecordPaymentModal';
 
 interface Props {
   orderId: string;
@@ -31,6 +32,8 @@ interface Props {
 
 const OrderDetailDrawer = ({ orderId, sourceType = 'order', billNumber, onClose }: Props) => {
   const isService = sourceType === 'service';
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const queryClient = useQueryClient();
   const { data: items, isLoading } = useQuery({
     queryKey: ['order-items', orderId],
     queryFn: () => isService
@@ -53,6 +56,18 @@ const OrderDetailDrawer = ({ orderId, sourceType = 'order', billNumber, onClose 
       : orderService.getOrderItems(orderId).then((rows: any) => ({ billNumber, rows })),
   });
   const drawerBillNo = items?.billNumber || billNumber;
+
+  const { data: orderDetail } = useQuery({
+    queryKey: ['order-detail', orderId],
+    queryFn: () => isService
+      ? Promise.resolve(null)
+      : api.get(`/sales/orders/${orderId}`).then(r => r.data.order),
+    enabled: !isService,
+  });
+
+  const paidAmount = orderDetail?.payments?.reduce((s: number, p: any) => s + Number(p.amount) || 0, 0) || 0;
+  const remaining = Math.max(0, (Number(orderDetail?.total_amount) || 0) - paidAmount);
+  const canRecordPayment = !isService && orderDetail && (orderDetail.payment_status || 'pending') !== 'paid';
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -143,6 +158,14 @@ const OrderDetailDrawer = ({ orderId, sourceType = 'order', billNumber, onClose 
         </div>
 
         <div className="p-8 border-t bg-gray-50 flex flex-col gap-3">
+           {canRecordPayment && (
+              <button
+                onClick={() => setPaymentOpen(true)}
+                className="w-full py-4 bg-green-600 text-white rounded-2xl font-black uppercase tracking-widest hover:bg-green-700 transition-all shadow-xl shadow-green-600/20 flex items-center justify-center gap-3"
+              >
+                <CreditCard className="h-5 w-5" /> Record Payment — {formatCurrencyValue(remaining)} due
+              </button>
+           )}
            <button
 onClick={() => window.open(isService
                   ? `/api/sales/service-requests/${orderId}/bill.pdf`
@@ -163,6 +186,19 @@ onClick={() => window.open(isService
             </div>
         </div>
       </div>
+
+      {paymentOpen && (
+        <RecordPaymentModal
+          requestId={orderId}
+          entityType="order"
+          remaining={remaining}
+          onClose={() => setPaymentOpen(false)}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['order-detail', orderId] });
+            queryClient.invalidateQueries({ queryKey: ['orders'] });
+          }}
+        />
+      )}
     </div>
   );
 };

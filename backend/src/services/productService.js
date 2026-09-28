@@ -1,5 +1,6 @@
 const { db, makeId, nowIso } = require("../../db");
 const { mapProductPricing } = require("../utils/productHelpers");
+const { autoHsn } = require("../utils/hsnLookup");
 
 const triggerStockScan = () => {
   try { require("./stockAlertService").scanForAlerts(); } catch (e) {}
@@ -39,13 +40,14 @@ const createOrUpdateProduct = (data, actorName) => {
   let isUpdate = false;
 
   const transaction = db.transaction(() => {
+    const hsnCode = (data.hsnCode && String(data.hsnCode).trim()) || autoHsn(data.name, data.type) || null;
     if (existing) {
       isUpdate = true;
       productId = existing.id;
       db.prepare(`
         UPDATE products
         SET type = ?, price = ?, description = ?, discount_percent = ?, stock = stock + ?, updated_by_employee_name = ?, supplier_id = ?, hsn_code = ?, gst_rate = ?,
-            unit_type = ?, base_unit = ?, sub_unit = ?, conversion_factor = ?, image_url = ?
+            unit_type = ?, base_unit = ?, sub_unit = ?, conversion_factor = ?, image_url = ?, cost_price = ?
         WHERE id = ?
       `).run(
         data.type,
@@ -55,21 +57,22 @@ const createOrUpdateProduct = (data, actorName) => {
         data.stock,
         actorName,
         data.supplierId,
-        data.hsnCode,
+        hsnCode,
         data.gstRate,
         data.unitType,
         data.baseUnit,
         data.subUnit,
         data.conversionFactor,
         data.imageUrl || existing.image_url,
+        data.costPrice != null && data.costPrice > 0 ? Math.round(data.costPrice) : existing.cost_price,
         productId
       );
       message = `Stock updated for ${data.name} (+${data.stock})`;
     } else {
       productId = makeId("product");
       db.prepare(`
-        INSERT INTO products (id, type, name, price, description, discount_percent, stock, updated_by_employee_name, supplier_id, hsn_code, gst_rate, active, unit_type, base_unit, sub_unit, conversion_factor, image_url)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
+        INSERT INTO products (id, type, name, price, description, discount_percent, stock, updated_by_employee_name, supplier_id, hsn_code, gst_rate, active, unit_type, base_unit, sub_unit, conversion_factor, image_url, cost_price)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
       `).run(
         productId,
         data.type,
@@ -80,13 +83,14 @@ const createOrUpdateProduct = (data, actorName) => {
         data.stock,
         actorName,
         data.supplierId,
-        data.hsnCode,
+        hsnCode,
         data.gstRate,
         data.unitType,
         data.baseUnit,
         data.subUnit,
         data.conversionFactor,
-        data.imageUrl || null
+        data.imageUrl || null,
+        data.costPrice != null && data.costPrice > 0 ? Math.round(data.costPrice) : 0
       );
     }
 

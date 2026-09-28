@@ -26,7 +26,8 @@ const EnquiryModal = ({ onClose, onSuccess }: Props) => {
     supplierId: '',
     quantity: 1,
     costPrice: 0,
-    leadSource: 'BNI Referral'
+    leadSource: 'BNI Referral',
+    followUpDate: ''
   });
 
   const [nameSearch, setNameSearch] = useState('');
@@ -190,14 +191,14 @@ const EnquiryModal = ({ onClose, onSuccess }: Props) => {
                 </div>
              </div>
              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-text-soft uppercase ml-1">Preferred Date</label>
+                <label className="text-[10px] font-bold text-text-soft uppercase ml-1">Follow-up Date</label>
                 <div className="relative">
                    <Calendar className="absolute left-3 top-3 h-4 w-4 text-text-soft" />
                    <input
                     type="date"
                     className="w-full pl-10 pr-4 py-2.5 border-2 border-gray-200 bg-white rounded-2xl outline-none focus:border-blue/40 transition-all text-sm font-medium"
-                    value={formData.preferredDate}
-                    onChange={e => setFormData({ ...formData, preferredDate: e.target.value })}
+                    value={formData.followUpDate}
+                    onChange={e => setFormData({ ...formData, followUpDate: e.target.value })}
                    />
                 </div>
              </div>

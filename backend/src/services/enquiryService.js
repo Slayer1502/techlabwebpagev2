@@ -1,5 +1,6 @@
 const { db, makeId, nowIso } = require("../../db");
 const { syncCustomerToParties } = require("./customerService");
+const { applyOrderPayment } = require("./splitPaymentService");
 
 const createEnquiryRecord = ({
   customerName,
@@ -14,13 +15,14 @@ const createEnquiryRecord = ({
   productId,
   quantity,
   costPrice,
-  leadSource
+  leadSource,
+  followUpDate
 }) => {
   syncCustomerToParties(customerName, mobile);
   const id = makeId("enquiry");
   db.prepare(`
-    INSERT INTO enquiries (id, customer_name, customer_mobile, type, product_interest, visit_address, preferred_date, budget, status, notes, created_at, supplier_id, product_id, quantity, cost_price, lead_source)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO enquiries (id, customer_name, customer_mobile, type, product_interest, visit_address, preferred_date, budget, status, notes, created_at, supplier_id, product_id, quantity, cost_price, lead_source, follow_up_date)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     customerName,
@@ -36,13 +38,20 @@ const createEnquiryRecord = ({
     productId || null,
     Number(quantity) || 1,
     Number(costPrice) || 0,
-    leadSource || "Walk-in"
+    leadSource || "Walk-in",
+    followUpDate || null
   );
   return id;
 };
 
 const getEnquiries = (status) => {
-  const base = "SELECT e.*, pt.name as supplier_name FROM enquiries e LEFT JOIN parties pt ON e.supplier_id = pt.id";
+  const base = `
+    SELECT e.*, pt.name as supplier_name,
+      (SELECT dc.total_value FROM delivery_challans dc WHERE dc.source_type = 'enquiry' AND dc.source_id = e.id LIMIT 1) as dc_total_value,
+      (SELECT po.total_amount FROM product_orders po WHERE po.id = (SELECT dc.linked_order_id FROM delivery_challans dc WHERE dc.source_type = 'enquiry' AND dc.source_id = e.id LIMIT 1)) as order_total_amount
+    FROM enquiries e
+    LEFT JOIN parties pt ON e.supplier_id = pt.id
+  `;
   const filter = status && status !== "all" ? `${base} WHERE e.status = ? ORDER BY e.created_at DESC`
                                              : `${base} ORDER BY e.created_at DESC`;
   return status && status !== "all" ? db.prepare(filter).all(status) : db.prepare(filter).all();
@@ -74,6 +83,8 @@ const updateEnquiry = (id, data, updatedBy) => {
   }
   if (data.validUntil !== undefined) { sets.push("valid_until = ?"); params.push(data.validUntil || null); }
   if (data.leadSource !== undefined) { sets.push("lead_source = ?"); params.push(data.leadSource || "Walk-in"); }
+  const followUp = data.followUpDate !== undefined ? data.followUpDate : data.follow_up_date;
+  if (followUp !== undefined) { sets.push("follow_up_date = ?"); params.push(followUp || null); }
 
   if (updatedBy) { sets.push("updated_by = ?"); params.push(updatedBy); }
 
@@ -235,9 +246,26 @@ const deliverEnquiry = (id, paymentData, updatedBy) => {
 };
 
 const recordPayment = (id, paymentData, updatedBy) => {
-  const { received, mode, date } = paymentData;
-  db.prepare("UPDATE enquiries SET final_received = ?, final_mode = ?, final_date = ?, updated_by = ? WHERE id = ?")
-    .run(Number(received) || 0, mode || null, date || nowIso().slice(0, 10), updatedBy, id);
+  const amount = Number(paymentData.received) || 0;
+  const mode = paymentData.mode || "Cash";
+  const date = paymentData.date || nowIso().slice(0, 10);
+
+  const transaction = db.transaction(() => {
+    db.prepare("UPDATE enquiries SET final_received = ?, final_mode = ?, final_date = ?, updated_by = ? WHERE id = ?")
+      .run(amount, mode || null, date, updatedBy, id);
+
+    // Cascade to the linked billed order (enquiry -> delivery challan -> product order)
+    const link = db.prepare(
+      "SELECT linked_order_id FROM delivery_challans WHERE source_type = 'enquiry' AND source_id = ? AND billing_status = 'billed' AND linked_order_id IS NOT NULL"
+    ).get(id);
+    if (link && amount > 0) {
+      applyOrderPayment(link.linked_order_id, [
+        { amount, paymentMode: mode, paymentDate: date },
+      ]);
+    }
+  });
+
+  transaction();
 };
 
 const deleteEnquiry = (id) => {

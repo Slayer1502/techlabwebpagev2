@@ -7,6 +7,7 @@ router.get("/sales/purchase-orders", authRequired(["sales", "admin"]), purchaseO
 router.get("/sales/purchase-orders/:id", authRequired(["sales", "admin"]), purchaseOrderController.getPurchaseOrderDetail);
 router.post("/sales/purchase-orders", authRequired(["sales", "admin"]), purchaseOrderController.createPurchaseOrder);
 router.post("/sales/purchase-orders/:id/receive", authRequired(["sales", "admin"]), purchaseOrderController.receivePurchaseOrder);
+router.patch("/sales/purchase-orders/:id/payment", authRequired(["sales", "admin"]), purchaseOrderController.recordPurchaseOrderPayment);
 router.delete("/sales/purchase-orders/:id", authRequired(["sales", "admin"]), purchaseOrderController.deletePurchaseOrder);
 
 module.exports = router;

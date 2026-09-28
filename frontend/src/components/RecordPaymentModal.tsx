@@ -6,6 +6,7 @@ import { formatCurrencyValue } from '../utils/helpers';
 
 interface Props {
   requestId: string;
+  entityType?: 'service' | 'order';
   remaining: number;
   onClose: () => void;
   onSuccess: () => void;
@@ -20,7 +21,8 @@ interface SplitRow {
 
 const MODES = ['Cash', 'UPI', 'Bank'];
 
-const RecordPaymentModal = ({ requestId, remaining, onClose, onSuccess }: Props) => {
+const RecordPaymentModal = ({ requestId, entityType = 'service', remaining, onClose, onSuccess }: Props) => {
+  const isOrder = entityType === 'order';
   const [loading, setLoading] = useState(false);
   const [discount, setDiscount] = useState(0);
   const [rows, setRows] = useState<SplitRow[]>([
@@ -52,7 +54,11 @@ const RecordPaymentModal = ({ requestId, remaining, onClose, onSuccess }: Props)
     setLoading(true);
 
     try {
-      if (rows.length === 1 && discount === 0) {
+      if (isOrder) {
+        await api.post(`/sales/orders/${requestId}/split-payment`, {
+          entries: rows.map(r => ({ amount: r.amount, paymentMode: r.paymentMode, paymentDate: r.paymentDate })),
+        });
+      } else if (rows.length === 1 && discount === 0) {
         // Single simple payment - use existing endpoint
         await api.patch(`/sales/service-requests/${requestId}/payment`, {
           amount: rows[0].amount,
@@ -150,16 +156,18 @@ const RecordPaymentModal = ({ requestId, remaining, onClose, onSuccess }: Props)
             ))}
           </div>
 
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold text-text-soft uppercase ml-1">Discount (optional)</label>
-            <input
-              type="number"
-              min="0"
-              className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm outline-none focus:border-blue/40"
-              value={discount}
-              onChange={e => setDiscount(Number(e.target.value))}
-            />
-          </div>
+          {!isOrder && (
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-text-soft uppercase ml-1">Discount (optional)</label>
+              <input
+                type="number"
+                min="0"
+                className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm outline-none focus:border-blue/40"
+                value={discount}
+                onChange={e => setDiscount(Number(e.target.value))}
+              />
+            </div>
+          )}
 
           <div className="flex items-center justify-between text-xs">
             <span className="text-text-soft font-medium">Total being collected</span>

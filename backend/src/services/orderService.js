@@ -1,7 +1,9 @@
 const { db, makeId, nowIso, nextBillNumber } = require("../../db");
 const { syncCustomerToParties } = require("./customerService");
 const { mapProductPricing } = require("../utils/productHelpers");
+const { autoHsn } = require("../utils/hsnLookup");
 const { deductStock } = require("./productService");
+const { applyOrderPayment } = require("./splitPaymentService");
 
 const createOrderForCustomer = ({ customerName, mobile, address, items, isGstBill, paymentStatus, paymentMode, paymentDate, createdAt, skipStockDeduction, status }) => {
   if (!items || !items.length) return { error: "No items selected" };
@@ -10,7 +12,7 @@ const createOrderForCustomer = ({ customerName, mobile, address, items, isGstBil
   const orderStatus = status || 'Ordered';
 
   const processedItems = items.map(cartItem => {
-    let p = cartItem.productId ? db.prepare(`SELECT id, name, type, price, discount_percent, hsn_code, gst_rate FROM products WHERE id = ? AND active = 1`).get(cartItem.productId) : null;
+    let p = cartItem.productId ? db.prepare(`SELECT id, name, type, price, discount_percent, hsn_code, gst_rate, cost_price FROM products WHERE id = ? AND active = 1`).get(cartItem.productId) : null;
 
     if (!p) {
       p = {
@@ -20,7 +22,8 @@ const createOrderForCustomer = ({ customerName, mobile, address, items, isGstBil
         price: Number(cartItem.customPrice) || 0,
         discount_percent: 0,
         hsn_code: null,
-        gst_rate: 18
+        gst_rate: 18,
+        cost_price: 0
       };
     }
 
@@ -60,9 +63,14 @@ const createOrderForCustomer = ({ customerName, mobile, address, items, isGstBil
 
   syncCustomerToParties(customerName, mobile);
 
+  const party = mobile ? db.prepare("SELECT address, gst_number FROM parties WHERE mobile = ? AND is_customer = 1").get(mobile) : null;
+  const customerAddress = (address || "").trim() || (party && party.address) || "";
+  const customerGstin = (party && party.gst_number) || null;
+
   const orderId = makeId("order");
   const orderDate = createdAt || nowIso().slice(0, 10);
-  const billNumber = nextBillNumber(orderDate);
+  const billNumber = nextBillNumber(orderDate, isGstEnabled);
+  const finalMobile = (mobile || "").trim() || "9999999999";
 
   const taxableAmount = processedItems.reduce((sum, item) => sum + (item.unitTaxable * item.qty), 0);
   const gstTotal = processedItems.reduce((sum, item) => sum + (item.unitGst * item.qty), 0);
@@ -71,29 +79,31 @@ const createOrderForCustomer = ({ customerName, mobile, address, items, isGstBil
   const totalAmount = taxableAmount + gstTotal;
 
   db.prepare(`
-    INSERT INTO product_orders (id, customer_mobile, customer_name, customer_address, total_amount, taxable_amount, cgst_total, sgst_total, igst_total, gst_total, status, created_at, payment_status, payment_mode, payment_date, is_gst_bill, bill_number)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(orderId, mobile, customerName, address || "", totalAmount, taxableAmount, cgstTotal, sgstTotal, gstTotal, orderStatus, orderDate, paymentStatus || 'pending', paymentMode || null, paymentDate || null, isGstEnabled ? 1 : 0, billNumber);
+    INSERT INTO product_orders (id, customer_mobile, customer_name, customer_address, customer_gstin, total_amount, taxable_amount, cgst_total, sgst_total, igst_total, gst_total, status, created_at, payment_status, payment_mode, payment_date, is_gst_bill, bill_number)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(orderId, finalMobile, customerName, customerAddress, customerGstin, totalAmount, taxableAmount, cgstTotal, sgstTotal, gstTotal, orderStatus, orderDate, paymentStatus || 'pending', paymentMode || null, paymentDate || null, isGstEnabled ? 1 : 0, billNumber);
 
   const insertOrderItem = db.prepare(`
-    INSERT INTO order_items (id, order_id, product_id, product_name, price, hsn_code, gst_rate, taxable_amount, cgst_amount, sgst_amount, qty)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO order_items (id, order_id, product_id, product_name, price, hsn_code, gst_rate, taxable_amount, cgst_amount, sgst_amount, qty, cost_amount)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   processedItems.forEach((item) => {
     const lineTaxable = item.unitTaxable * item.qty;
+    const lineCost = Number(item.cost_price || 0) * item.qty;
     insertOrderItem.run(
       makeId("order-item"),
       orderId,
       item.id || "product-manual",
       item.name,
       item.unitTotal,
-      item.hsn_code || null,
+      item.hsn_code || autoHsn(item.name, item.type) || null,
       item.gstRate,
       item.unitTaxable,
       Math.round(lineTaxable * item.gstRate / 2 / 100),
       Math.round(lineTaxable * item.gstRate / 2 / 100),
-      item.qty
+      item.qty,
+      lineCost
     );
 
     if (!skipStockDeduction && item.id && item.type !== "Service") {
@@ -164,40 +174,17 @@ const deleteOrder = (id, revertToDc) => {
 };
 
 const recordOrderPayment = (id, data) => {
-    const order = db.prepare("SELECT total_amount, payment_status FROM product_orders WHERE id = ?").get(id);
+    const order = db.prepare("SELECT total_amount FROM product_orders WHERE id = ?").get(id);
     if (!order) return { error: "Order not found" };
 
     const transaction = db.transaction(() => {
-        const paidAt = data.paidAt || nowIso().slice(0, 10);
-        const amt = Number(data.amount);
-
-        if (amt > 0) {
-            db.prepare(`
-                INSERT INTO order_payments (id, order_id, amount, payment_mode, paid_at, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-            `).run(makeId("pay"), id, amt, data.paymentMode || 'Cash', paidAt, nowIso());
-        }
-
-        const totalPaid = db.prepare("SELECT SUM(amount) as total FROM order_payments WHERE id = ?").get(id).total || 0;
-
-        let newStatus = order.payment_status;
-        let finalPaymentMode = data.paymentMode;
-        if (totalPaid >= order.total_amount) {
-            newStatus = 'paid';
-            const modes = db.prepare("SELECT DISTINCT payment_mode FROM order_payments WHERE order_id = ?").all(id);
-            finalPaymentMode = modes.length > 1 ? 'Mixed' : modes[0].payment_mode;
-        } else if (totalPaid > 0) {
-            newStatus = 'partial';
-        }
-
-        const updateMainStatus = newStatus === 'paid' ? ", status = 'Delivered'" : "";
-        db.prepare(`
-            UPDATE product_orders
-            SET payment_status = ?, payment_mode = ?, payment_date = ? ${updateMainStatus}
-            WHERE id = ?
-        `).run(newStatus, finalPaymentMode || null, paidAt, id);
-
-        return { totalPaid, remaining: order.total_amount - totalPaid };
+        return applyOrderPayment(id, [
+            {
+                amount: Number(data.amount),
+                paymentMode: data.paymentMode || "Cash",
+                paymentDate: data.paidAt || nowIso().slice(0, 10),
+            },
+        ]);
     });
 
     return transaction();

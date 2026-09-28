@@ -42,7 +42,6 @@ const getAdminDashboardData = (limit, offset) => {
       (SELECT COUNT(*) FROM users WHERE role = 'customer') as customerCount,
       (SELECT COUNT(*) FROM parties) as partyCount,
       (SELECT COALESCE(SUM(COALESCE(total_cost,0) - COALESCE(amount_paid,0)),0) FROM purchases WHERE payment_status != 'paid') +
-      (SELECT COALESCE(SUM(total_amount),0) FROM purchase_orders WHERE status NOT IN ('received', 'cancelled')) +
       (SELECT COALESCE(SUM(bill_amount - COALESCE(amount_paid,0) - COALESCE(discount_amount,0)),0) FROM service_requests WHERE bill_status = 'billed' AND payment_status != 'paid' AND status != 'Canceled') +
       (SELECT COALESCE(SUM(total_amount),0) FROM product_orders WHERE payment_status != 'paid' AND status NOT IN ('Cancelled', 'Demo')) as totalDues
     FROM users LIMIT 1
@@ -53,6 +52,15 @@ const getAdminDashboardData = (limit, offset) => {
   const todayUpiSrv = db.prepare("SELECT COALESCE(SUM(amount),0) as t FROM service_payments WHERE payment_mode='UPI' AND paid_at=?").get(todayStr).t || 0;
   const todayCashOrd = db.prepare("SELECT SUM(total_amount) as t FROM product_orders WHERE payment_status='paid' AND payment_mode='Cash' AND payment_date=?").get(todayStr).t || 0;
   const todayUpiOrd = db.prepare("SELECT SUM(total_amount) as t FROM product_orders WHERE payment_status='paid' AND payment_mode='UPI' AND payment_date=?").get(todayStr).t || 0;
+  const todayBankOrd = db.prepare("SELECT SUM(total_amount) as t FROM product_orders WHERE payment_status='paid' AND payment_mode='Bank' AND payment_date=?").get(todayStr).t || 0;
+  const todayCogsOrd = db.prepare(`
+    SELECT COALESCE(SUM(oi.cost_amount),0) as t
+    FROM order_items oi
+    JOIN product_orders o ON o.id = oi.order_id
+    WHERE o.payment_status = 'paid' AND o.payment_date = ?
+  `).get(todayStr).t || 0;
+
+  const todayCollection = todayCashSrv + todayUpiSrv + todayCashOrd + todayUpiOrd + todayBankOrd;
 
   const summary = {
     staff: stats.staffCount,
@@ -68,6 +76,9 @@ const getAdminDashboardData = (limit, offset) => {
     totalDues: stats.totalDues || 0,
     todayCash: todayCashSrv + todayCashOrd,
     todayUpi: todayUpiSrv + todayUpiOrd,
+    todayBank: todayBankOrd,
+    todayCogs: todayCogsOrd,
+    todayProfit: todayCollection - todayCogsOrd,
   };
 
   return { staff, orders, requests, products, summary };
@@ -132,6 +143,17 @@ const getSalesDashboardData = (query) => {
 
   const todayCashOrders = db.prepare("SELECT COALESCE(SUM(amount),0) as total FROM order_payments WHERE payment_mode = 'Cash' AND paid_at = ?").get(today).total || 0;
   const todayUpiOrders = db.prepare("SELECT COALESCE(SUM(amount),0) as total FROM order_payments WHERE payment_mode = 'UPI' AND paid_at = ?").get(today).total || 0;
+  const todayBankOrders = db.prepare("SELECT COALESCE(SUM(amount),0) as total FROM order_payments WHERE payment_mode = 'Bank' AND paid_at = ?").get(today).total || 0;
+  const todayOtherOrders = db.prepare("SELECT COALESCE(SUM(amount),0) as total FROM order_payments WHERE payment_mode NOT IN ('Cash', 'UPI', 'Bank') AND paid_at = ?").get(today).total || 0;
+
+  const allTodayOrderPayments = todayCashOrders + todayUpiOrders + todayBankOrders + todayOtherOrders;
+
+  const todayCogsOrders = db.prepare(`
+    SELECT COALESCE(SUM(oi.cost_amount),0) as total
+    FROM order_items oi
+    JOIN order_payments op ON op.order_id = oi.order_id
+    WHERE op.paid_at = ?
+  `).get(today).total || 0;
 
   const monthStart = `${today.slice(0, 7)}-01`;
   const monthlyReceivedServices = db.prepare("SELECT COALESCE(SUM(amount),0) as total FROM service_payments WHERE paid_at >= ?").get(monthStart).total || 0;
@@ -178,7 +200,11 @@ const getSalesDashboardData = (query) => {
   const summary = {
     todayCash: todayCashServices + todayCashOrders,
     todayUpi: todayUpiServices + todayUpiOrders,
-    todayTotal: todayCashServices + todayCashOrders + todayUpiServices + todayUpiOrders,
+    todayBank: todayBankOrders,
+    todayOther: todayOtherOrders,
+    todayTotal: todayCashServices + todayUpiServices + allTodayOrderPayments,
+    todayCogs: todayCogsOrders,
+    todayProfit: (todayCashServices + todayUpiServices + allTodayOrderPayments) - todayCogsOrders,
     monthlyRevenue,
     pendingServices,
     scheduledServices,

@@ -1,4 +1,5 @@
 const { db, makeId, nowIso } = require("../../db");
+const { autoHsn } = require("../utils/hsnLookup");
 
 const getAllSuppliers = () => {
   return db.prepare("SELECT * FROM parties WHERE is_supplier = 1 ORDER BY name").all();
@@ -113,9 +114,9 @@ const recordPurchase = (supplierId, data) => {
         const type = data.productType || "Accessory";
         const rate = Number(data.gstRate ?? 18);
         db.prepare(`
-          INSERT INTO products (id, type, name, price, description, discount_percent, active, stock, gst_rate)
-          VALUES (?, ?, ?, ?, ?, 0, 1, 0, ?)
-        `).run(finalProductId, type, data.productName, cost * 1.5, `Automatically created from purchase at ${date}`, rate);
+          INSERT INTO products (id, type, name, price, description, discount_percent, active, stock, gst_rate, cost_price, hsn_code)
+          VALUES (?, ?, ?, ?, ?, 0, 1, 0, ?, ?, ?)
+        `).run(finalProductId, type, data.productName, cost * 1.5, `Automatically created from purchase at ${date}`, rate, cost, autoHsn(data.productName, type));
       }
     }
 
@@ -132,7 +133,7 @@ const recordPurchase = (supplierId, data) => {
     );
 
     // Increase stock if payment is settled or even if pending (business preference)
-    db.prepare("UPDATE products SET stock = stock + ? WHERE id = ?").run(qty, finalProductId);
+    db.prepare("UPDATE products SET stock = stock + ?, cost_price = ? WHERE id = ?").run(qty, cost, finalProductId);
   });
 
   transaction();

@@ -231,7 +231,27 @@ const createStandaloneChallan = (data, userId) => {
   const dispatchDateValue = String(dispatchDate || "").slice(0, 10) || nowIso().slice(0, 10);
   const id = makeId("challan");
   const challanNumber = `DC-${id}`;
-  const totalValue = items.reduce((sum, item) => sum + (item.qty * (Number(item.customPrice) || 0)), 0);
+
+  const processedItems = (items || []).map(item => {
+    const qty = Number(item.qty || item.quantity) || 1;
+    const unitPrice = Number(item.customPrice != null ? item.customPrice : (item.unitPrice != null ? item.unitPrice : 0)) || 0;
+    let itemName = item.itemName || item.name || item.product_name;
+
+    let p = item.productId ? db.prepare("SELECT name, type FROM products WHERE id = ?").get(item.productId) : null;
+    if (!itemName && p) itemName = p.name;
+    if (!itemName) itemName = "Item";
+
+    return {
+      productId: item.productId || null,
+      itemName,
+      qty,
+      unitPrice,
+      totalPrice: qty * unitPrice,
+      productObj: p
+    };
+  });
+
+  const totalValue = processedItems.reduce((sum, item) => sum + item.totalPrice, 0);
 
   const transaction = db.transaction(() => {
     db.prepare(`
@@ -240,25 +260,17 @@ const createStandaloneChallan = (data, userId) => {
     `).run(id, challanNumber, id, customerName, mobile, dispatchDateValue, receiverName || customerName, transport || null, vehicleNo || null, notes || null, userId, nowIso(), totalValue);
 
     const insertItem = db.prepare("INSERT INTO delivery_challan_items (challan_id, item_name, qty, unit_price, total_price) VALUES (?, ?, ?, ?, ?)");
-    let droppedUnknown = false;
-    items.forEach(item => {
-      const unitPrice = Number(item.customPrice) || 0;
-      const lineTotal = item.qty * unitPrice;
+    processedItems.forEach(item => {
+      insertItem.run(id, item.itemName, item.qty, item.unitPrice, item.totalPrice);
 
-      const p = db.prepare("SELECT name, type FROM products WHERE id = ?").get(item.productId);
-      const itemName = p ? p.name : "Unknown Item";
-      insertItem.run(id, itemName, item.qty, unitPrice, lineTotal);
-
-      if (p && p.type !== "Service") {
-        deductStock(item.productId, item.qty);
-      } else if (!p) {
-        droppedUnknown = true;
+      if (item.productObj && item.productObj.type !== "Service") {
+        try { deductStock(item.productId, item.qty); } catch (e) { /* ignore */ }
+      } else if (!item.productObj && item.productId) {
+        try { deductStock(item.productId, item.qty); } catch (e) { /* ignore */ }
       }
     });
 
-    if (!droppedUnknown) {
-      db.prepare("UPDATE delivery_challans SET stock_deducted = 1 WHERE id = ?").run(id);
-    }
+    db.prepare("UPDATE delivery_challans SET stock_deducted = 1 WHERE id = ?").run(id);
     return { id, challan_number: challanNumber };
   });
 

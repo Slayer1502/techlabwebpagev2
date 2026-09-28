@@ -7,6 +7,11 @@ export const purchaseService = {
     return res.data.purchaseOrders;
   },
 
+  getPurchaseOrderById: async (id: string) => {
+    const res = await api.get(`/sales/purchase-orders/${id}`);
+    return res.data;
+  },
+
   getPurchaseOrderDetail: async (id: string) => {
     const res = await api.get(`/sales/purchase-orders/${id}`);
     return res.data;
@@ -22,6 +27,11 @@ export const purchaseService = {
     return res.data;
   },
 
+  recordPurchasePayment: async (id: string, data: { paymentMode: string; paymentDate: string; amount: number }) => {
+    const res = await api.patch(`/sales/purchases/${id}/payment`, data);
+    return res.data;
+  },
+
   createPurchaseOrder: async (data: any) => {
     const res = await api.post('/sales/purchase-orders', data);
     return res.data;
@@ -29,6 +39,11 @@ export const purchaseService = {
 
   receivePurchaseOrder: async (id: string, data: any) => {
     const res = await api.post(`/sales/purchase-orders/${id}/receive`, data);
+    return res.data;
+  },
+
+  recordPurchaseOrderPayment: async (id: string, data: { paymentMode: string; paymentDate: string; amount: number }) => {
+    const res = await api.patch(`/sales/purchase-orders/${id}/payment`, data);
     return res.data;
   },
 

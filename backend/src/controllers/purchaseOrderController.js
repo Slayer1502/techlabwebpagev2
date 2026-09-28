@@ -29,6 +29,15 @@ const receivePurchaseOrder = async (req, res) => {
   }
 };
 
+const recordPurchaseOrderPayment = async (req, res) => {
+  try {
+    const result = purchaseOrderService.recordPurchaseOrderPayment(req.params.id, req.body);
+    res.json({ message: result.payment_status === "paid" ? "PO fully paid" : "PO payment recorded", ...result });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+};
+
 const deletePurchaseOrder = async (req, res) => {
   try {
     const force = req.query.force === "true";
@@ -51,5 +60,6 @@ module.exports = {
   getPurchaseOrderDetail,
   createPurchaseOrder,
   receivePurchaseOrder,
+  recordPurchaseOrderPayment,
   deletePurchaseOrder
 };

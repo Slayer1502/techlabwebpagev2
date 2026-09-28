@@ -88,9 +88,16 @@ const EnquiryPage = () => {
                  <ChevronRight className="h-4 w-4 text-gray-300 group-hover:text-blue transition-colors shrink-0" />
               </div>
 
-              <p className="text-xs text-text-soft font-medium mb-4 line-clamp-2 leading-relaxed">
+              <p className="text-xs text-text-soft font-medium mb-3 line-clamp-2 leading-relaxed">
                  {enq.product_interest || enq.type}
               </p>
+
+              {enq.follow_up_date && (
+                 <div className="flex items-center gap-1.5 text-[10px] font-bold text-orange-600 bg-orange-50 px-2.5 py-1 rounded-lg w-fit mb-3 border border-orange-100">
+                    <Calendar className="h-3 w-3" />
+                    Follow-up: {formatDateValue(enq.follow_up_date)}
+                 </div>
+              )}
 
               <div className="flex items-center justify-between mt-auto pt-3 border-t border-dashed">
                  {enq.status === 'quoted' && (
@@ -103,7 +110,12 @@ const EnquiryPage = () => {
                  )}
                  <div className="text-right">
                     <p className="text-[10px] font-black text-blue">
-                       {getEnquiryQuoteTotal(enq.quote_options) ? formatCurrencyValue(getEnquiryQuoteTotal(enq.quote_options)) : (enq.budget ? `~ ${formatCurrencyValue(enq.budget)}` : 'No Quote')}
+                       {enq.order_total_amount || enq.dc_total_value
+                          ? formatCurrencyValue(Number(enq.order_total_amount || enq.dc_total_value))
+                          : (getEnquiryQuoteTotal(enq.quote_options)
+                             ? formatCurrencyValue(getEnquiryQuoteTotal(enq.quote_options))
+                             : (enq.budget ? `~ ${formatCurrencyValue(enq.budget)}` : 'No Quote'))}
+                       {enq.status === 'delivered' && <span className="text-[8px] font-bold text-green-600 block uppercase">Fulfilled</span>}
                     </p>
                     {(() => {
                       const m = getEnquiryMargin(enq.quote_options);

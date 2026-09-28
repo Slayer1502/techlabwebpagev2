@@ -65,7 +65,7 @@ const getCustomers = () => {
 const createCustomer = (data) => {
     const id = makeId("customer");
     db.prepare(`INSERT INTO product_orders (id, customer_name, customer_mobile, customer_address, total_amount, status, created_at) VALUES (?, ?, ?, ?, 0, 'Demo', ?)`)
-      .run(id, data.name, data.mobile, data.address || "", nowIso().slice(0, 10));
+      .run(id, data.name, (data.mobile || "").trim() || "9999999999", data.address || "", nowIso().slice(0, 10));
     return { id, ...data };
 };
 

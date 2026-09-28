@@ -38,6 +38,9 @@ const syncFiles = () => {
 
 syncFiles();
 
+const { backfillPurchaseOrderPayments } = require("./backend/src/services/purchaseOrderService");
+backfillPurchaseOrderPayments();
+
 const app = express();
 const PORT = config.PORT;
 const isProduction = config.IS_PRODUCTION;

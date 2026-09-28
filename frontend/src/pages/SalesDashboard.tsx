@@ -23,7 +23,8 @@ import {
   ArrowRight,
   Sparkles,
   ChevronRight,
-  PackageCheck
+  PackageCheck,
+  Truck
 } from 'lucide-react';
 import { formatCurrencyValue } from '../utils/helpers';
 import { clsx, type ClassValue } from 'clsx';
@@ -78,6 +79,7 @@ const SalesDashboard = () => {
             <IndianRupee className="h-4 w-4 text-green-400" />
             <p className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Today Total:</p>
             <p className="text-sm font-black text-green-400">{formatCurrencyValue(summary.todayTotal)}</p>
+            <p className="text-sm font-black text-emerald-300 ml-3">Profit: {formatCurrencyValue(summary.todayProfit || 0)}</p>
           </div>
 
           <div className="flex gap-6 flex-1 px-4 text-[11px] font-medium overflow-x-auto no-scrollbar">
@@ -88,6 +90,10 @@ const SalesDashboard = () => {
             <div className="flex items-center gap-1.5 whitespace-nowrap">
               <span className="text-gray-400 uppercase text-[9px]">UPI:</span>
               <span className="text-blue-400 font-bold">{formatCurrencyValue(summary.todayUpi)}</span>
+            </div>
+            <div className="flex items-center gap-1.5 whitespace-nowrap">
+              <span className="text-gray-400 uppercase text-[9px]">Bank:</span>
+              <span className="text-purple-400 font-bold">{formatCurrencyValue(summary.todayBank || 0)}</span>
             </div>
             <div className="flex items-center gap-1.5 whitespace-nowrap">
               <span className="text-gray-400 uppercase text-[9px]">Monthly Revenue:</span>
@@ -106,56 +112,85 @@ const SalesDashboard = () => {
         </div>
 
         {/* ⚡ Quick Action Dock (Useful Shortcuts) */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+           <button
+             onClick={() => {
+               const posEl = document.getElementById('quick-pos-section');
+               if (posEl) posEl.scrollIntoView({ behavior: 'smooth' });
+             }}
+             className="bg-white p-3.5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-blue/30 transition-all flex items-center gap-3 group text-left"
+           >
+              <div className="p-2.5 bg-blue/10 text-blue rounded-xl group-hover:bg-blue group-hover:text-white transition-all shrink-0">
+                 <ShoppingCart className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                 <p className="text-[11px] font-black text-navy uppercase tracking-tight truncate">New POS Bill</p>
+                 <p className="text-[9px] text-text-soft font-bold truncate">Direct Checkout</p>
+              </div>
+           </button>
+
            <button
              onClick={() => setIsServiceModalOpen(true)}
-             className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-blue/30 transition-all flex items-center gap-4 group text-left"
+             className="bg-white p-3.5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-indigo-500/30 transition-all flex items-center gap-3 group text-left"
            >
-              <div className="p-3 bg-blue/10 text-blue rounded-xl group-hover:bg-blue group-hover:text-white transition-all">
-                 <Wrench className="h-5 w-5" />
+              <div className="p-2.5 bg-indigo-500/10 text-indigo-600 rounded-xl group-hover:bg-indigo-600 group-hover:text-white transition-all shrink-0">
+                 <Wrench className="h-4 w-4" />
               </div>
-              <div>
-                 <p className="text-xs font-black text-navy uppercase tracking-tight">New Service</p>
-                 <p className="text-[10px] text-text-soft font-bold">Book Repair / Survey</p>
+              <div className="min-w-0">
+                 <p className="text-[11px] font-black text-navy uppercase tracking-tight truncate">Service Ticket</p>
+                 <p className="text-[9px] text-text-soft font-bold truncate">Repair / Survey</p>
               </div>
            </button>
 
            <button
              onClick={() => setIsEnquiryModalOpen(true)}
-             className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-purple-500/30 transition-all flex items-center gap-4 group text-left"
+             className="bg-white p-3.5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-purple-500/30 transition-all flex items-center gap-3 group text-left"
            >
-              <div className="p-3 bg-purple-500/10 text-purple-600 rounded-xl group-hover:bg-purple-600 group-hover:text-white transition-all">
-                 <HelpCircle className="h-5 w-5" />
+              <div className="p-2.5 bg-purple-500/10 text-purple-600 rounded-xl group-hover:bg-purple-600 group-hover:text-white transition-all shrink-0">
+                 <HelpCircle className="h-4 w-4" />
               </div>
-              <div>
-                 <p className="text-xs font-black text-navy uppercase tracking-tight">New Lead / BNI</p>
-                 <p className="text-[10px] text-text-soft font-bold">Record Pipeline Entry</p>
+              <div className="min-w-0">
+                 <p className="text-[11px] font-black text-navy uppercase tracking-tight truncate">New Lead</p>
+                 <p className="text-[9px] text-text-soft font-bold truncate">Pipeline Entry</p>
               </div>
            </button>
 
            <button
              onClick={() => navigate('/quotations')}
-             className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-green-500/30 transition-all flex items-center gap-4 group text-left"
+             className="bg-white p-3.5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-green-500/30 transition-all flex items-center gap-3 group text-left"
            >
-              <div className="p-3 bg-green-500/10 text-green-600 rounded-xl group-hover:bg-green-600 group-hover:text-white transition-all">
-                 <FileText className="h-5 w-5" />
+              <div className="p-2.5 bg-green-500/10 text-green-600 rounded-xl group-hover:bg-green-600 group-hover:text-white transition-all shrink-0">
+                 <FileText className="h-4 w-4" />
               </div>
-              <div>
-                 <p className="text-xs font-black text-navy uppercase tracking-tight">Quotations</p>
-                 <p className="text-[10px] text-text-soft font-bold">Build Price Proposal</p>
+              <div className="min-w-0">
+                 <p className="text-[11px] font-black text-navy uppercase tracking-tight truncate">Quotation</p>
+                 <p className="text-[9px] text-text-soft font-bold truncate">Price Proposal</p>
               </div>
            </button>
 
            <button
              onClick={() => navigate('/purchases')}
-             className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-orange-500/30 transition-all flex items-center gap-4 group text-left"
+             className="bg-white p-3.5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-orange-500/30 transition-all flex items-center gap-3 group text-left"
            >
-              <div className="p-3 bg-orange-500/10 text-orange-600 rounded-xl group-hover:bg-orange-600 group-hover:text-white transition-all">
-                 <Package className="h-5 w-5" />
+              <div className="p-2.5 bg-orange-500/10 text-orange-600 rounded-xl group-hover:bg-orange-600 group-hover:text-white transition-all shrink-0">
+                 <Package className="h-4 w-4" />
               </div>
-              <div>
-                 <p className="text-xs font-black text-navy uppercase tracking-tight">Stock In</p>
-                 <p className="text-[10px] text-text-soft font-bold">Purchase / Inventory</p>
+              <div className="min-w-0">
+                 <p className="text-[11px] font-black text-navy uppercase tracking-tight truncate">Stock In</p>
+                 <p className="text-[9px] text-text-soft font-bold truncate">Record Purchase</p>
+              </div>
+           </button>
+
+           <button
+             onClick={() => navigate('/challans')}
+             className="bg-white p-3.5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-cyan-500/30 transition-all flex items-center gap-3 group text-left"
+           >
+              <div className="p-2.5 bg-cyan-500/10 text-cyan-600 rounded-xl group-hover:bg-cyan-600 group-hover:text-white transition-all shrink-0">
+                 <Truck className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                 <p className="text-[11px] font-black text-navy uppercase tracking-tight truncate">D.C. / Dispatch</p>
+                 <p className="text-[9px] text-text-soft font-bold truncate">Delivery Challan</p>
               </div>
            </button>
         </div>
@@ -164,7 +199,7 @@ const SalesDashboard = () => {
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
            {/* Left Column: POS Integration */}
            <div className="xl:col-span-2 space-y-6">
-              <div className="bg-white p-6 rounded-[2.5rem] border border-gray-100 shadow-sm">
+              <div id="quick-pos-section" className="bg-white p-6 rounded-[2.5rem] border border-gray-100 shadow-sm">
                  <div className="flex items-center justify-between mb-4">
                     <h2 className="text-lg font-bold text-navy flex items-center gap-2">
                        <Zap className="h-5 w-5 text-blue" />

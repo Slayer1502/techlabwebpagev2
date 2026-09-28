@@ -184,13 +184,13 @@ const buildReport = (scope, opts = {}) => {
 
   if (scope === "gst_summary") {
     const ordersSql = hasRange
-      ? "SELECT id, customer_name, taxable_amount, cgst_total, sgst_total, total_amount, created_at FROM product_orders WHERE is_gst_bill = 1 AND status != 'Cancelled' AND created_at >= ? AND created_at < ?"
-      : "SELECT id, customer_name, taxable_amount, cgst_total, sgst_total, total_amount, created_at FROM product_orders WHERE is_gst_bill = 1 AND status != 'Cancelled'";
+      ? "SELECT id, bill_number, customer_name, customer_gstin, taxable_amount, cgst_total, sgst_total, total_amount, created_at FROM product_orders WHERE is_gst_bill = 1 AND status != 'Cancelled' AND created_at >= ? AND created_at < ?"
+      : "SELECT id, bill_number, customer_name, customer_gstin, taxable_amount, cgst_total, sgst_total, total_amount, created_at FROM product_orders WHERE is_gst_bill = 1 AND status != 'Cancelled'";
     const orders = hasRange ? db.prepare(ordersSql).all(start, endEx) : db.prepare(ordersSql).all();
 
     const sSql = hasRange
-      ? `SELECT id, customer_name, taxable_amount, cgst_total, sgst_total, bill_amount AS total_amount, COALESCE(bill_date, created_at) AS created_at, device_type FROM service_requests WHERE bill_status = 'billed' AND (cgst_total > 0 OR sgst_total > 0) AND COALESCE(bill_date, created_at) >= ? AND COALESCE(bill_date, created_at) < ?`
-      : `SELECT id, customer_name, taxable_amount, cgst_total, sgst_total, bill_amount AS total_amount, COALESCE(bill_date, created_at) AS created_at, device_type FROM service_requests WHERE bill_status = 'billed' AND (cgst_total > 0 OR sgst_total > 0)`;
+      ? `SELECT id, bill_number, customer_name, (SELECT gst_number FROM parties WHERE parties.mobile = service_requests.customer_mobile AND parties.gst_number IS NOT NULL AND parties.mobile IS NOT NULL LIMIT 1) AS customer_gstin, taxable_amount, cgst_total, sgst_total, bill_amount AS total_amount, COALESCE(bill_date, created_at) AS created_at, device_type FROM service_requests WHERE bill_status = 'billed' AND (cgst_total > 0 OR sgst_total > 0) AND COALESCE(bill_date, created_at) >= ? AND COALESCE(bill_date, created_at) < ?`
+      : `SELECT id, bill_number, customer_name, (SELECT gst_number FROM parties WHERE parties.mobile = service_requests.customer_mobile AND parties.gst_number IS NOT NULL AND parties.mobile IS NOT NULL LIMIT 1) AS customer_gstin, taxable_amount, cgst_total, sgst_total, bill_amount AS total_amount, COALESCE(bill_date, created_at) AS created_at, device_type FROM service_requests WHERE bill_status = 'billed' AND (cgst_total > 0 OR sgst_total > 0)`;
     const services = hasRange ? db.prepare(sSql).all(start, endEx) : db.prepare(sSql).all();
 
     const all = [...orders.map(o => ({ ...o, type: "Sale" })), ...services.map(s => ({ ...s, type: "Service" }))]
@@ -210,8 +210,9 @@ const buildReport = (scope, opts = {}) => {
       ],
       tableHeaders: [
         { key: "date", label: "Date" },
-        { key: "ref", label: "Ref #" },
+        { key: "ref", label: "Invoice #" },
         { key: "customer", label: "Customer" },
+        { key: "gstin", label: "Customer GST" },
         { key: "type", label: "Type" },
         { key: "taxable", label: "Taxable" },
         { key: "cgst", label: "CGST" },
@@ -220,8 +221,9 @@ const buildReport = (scope, opts = {}) => {
       ],
       tableRows: all.map(i => ({
         date: formatDateValue(i.created_at),
-        ref: String(i.id).slice(-8).toUpperCase(),
+        ref: i.bill_number || String(i.id).slice(-8).toUpperCase(),
         customer: i.customer_name,
+        gstin: i.customer_gstin || "—",
         type: i.type,
         taxable: money(i.taxable_amount),
         cgst: money(i.cgst_total),
@@ -487,8 +489,7 @@ const buildReport = (scope, opts = {}) => {
       SELECT
         (SELECT COALESCE(SUM(bill_amount - COALESCE(amount_paid,0) - COALESCE(discount_amount,0)),0) FROM service_requests WHERE bill_status = 'billed' AND payment_status != 'paid')
         + (SELECT COALESCE(SUM(total_amount),0) FROM product_orders WHERE payment_status != 'paid' AND status != 'Cancelled') AS customer_due,
-        (SELECT COALESCE(SUM(COALESCE(total_cost,0) + COALESCE(cgst_total,0) + COALESCE(sgst_total,0) - COALESCE(amount_paid,0)),0) FROM purchases WHERE payment_status != 'paid')
-        + (SELECT COALESCE(SUM(total_amount),0) FROM purchase_orders WHERE status NOT IN ('received','cancelled')) AS supplier_due
+        (SELECT COALESCE(SUM(COALESCE(total_cost,0) + COALESCE(cgst_total,0) + COALESCE(sgst_total,0) - COALESCE(amount_paid,0)),0) FROM purchases WHERE payment_status != 'paid') AS supplier_due
     `).get();
     const customerDue = live.customer_due || 0;
     const supplierDue = live.supplier_due || 0;
@@ -615,12 +616,10 @@ const buildReport = (scope, opts = {}) => {
   if (scope === "supplier_dues") {
     const rows = db.prepare(`
       SELECT pt.name AS supplier_name,
-        (SELECT COALESCE(SUM(COALESCE(p.total_cost,0) + COALESCE(p.cgst_total,0) + COALESCE(p.sgst_total,0) - COALESCE(p.amount_paid,0)),0) FROM purchases p WHERE p.supplier_id = pt.id AND p.payment_status != 'paid')
-        + (SELECT COALESCE(SUM(po.total_amount),0) FROM purchase_orders po WHERE po.supplier_id = pt.id AND po.status NOT IN ('received','cancelled')) AS due
+        (SELECT COALESCE(SUM(COALESCE(p.total_cost,0) + COALESCE(p.cgst_total,0) + COALESCE(p.sgst_total,0) - COALESCE(p.amount_paid,0)),0) FROM purchases p WHERE p.supplier_id = pt.id AND p.payment_status != 'paid') AS due
       FROM parties pt
       WHERE pt.is_supplier = 1
-        AND ((SELECT COALESCE(SUM(COALESCE(p.total_cost,0) + COALESCE(p.cgst_total,0) + COALESCE(p.sgst_total,0) - COALESCE(p.amount_paid,0)),0) FROM purchases p WHERE p.supplier_id = pt.id AND p.payment_status != 'paid')
-            + (SELECT COALESCE(SUM(po.total_amount),0) FROM purchase_orders po WHERE po.supplier_id = pt.id AND po.status NOT IN ('received','cancelled'))) > 0
+        AND (SELECT COALESCE(SUM(COALESCE(p.total_cost,0) + COALESCE(p.cgst_total,0) + COALESCE(p.sgst_total,0) - COALESCE(p.amount_paid,0)),0) FROM purchases p WHERE p.supplier_id = pt.id AND p.payment_status != 'paid') > 0
       ORDER BY due DESC
     `).all();
     const total = rows.reduce((s, r) => s + (r.due || 0), 0);
@@ -651,11 +650,9 @@ const buildReport = (scope, opts = {}) => {
     `).all();
     const supplierRows = db.prepare(`
       SELECT pt.name AS supplier_name,
-        (SELECT COALESCE(SUM(COALESCE(p.total_cost,0) + COALESCE(p.cgst_total,0) + COALESCE(p.sgst_total,0) - COALESCE(p.amount_paid,0)),0) FROM purchases p WHERE p.supplier_id = pt.id AND p.payment_status != 'paid')
-        + (SELECT COALESCE(SUM(po.total_amount),0) FROM purchase_orders po WHERE po.supplier_id = pt.id AND po.status NOT IN ('received','cancelled')) AS due
+        (SELECT COALESCE(SUM(COALESCE(p.total_cost,0) + COALESCE(p.cgst_total,0) + COALESCE(p.sgst_total,0) - COALESCE(p.amount_paid,0)),0) FROM purchases p WHERE p.supplier_id = pt.id AND p.payment_status != 'paid') AS due
       FROM parties pt WHERE pt.is_supplier = 1
-        AND ((SELECT COALESCE(SUM(COALESCE(p.total_cost,0) + COALESCE(p.cgst_total,0) + COALESCE(p.sgst_total,0) - COALESCE(p.amount_paid,0)),0) FROM purchases p WHERE p.supplier_id = pt.id AND p.payment_status != 'paid')
-            + (SELECT COALESCE(SUM(po.total_amount),0) FROM purchase_orders po WHERE po.supplier_id = pt.id AND po.status NOT IN ('received','cancelled'))) > 0
+        AND (SELECT COALESCE(SUM(COALESCE(p.total_cost,0) + COALESCE(p.cgst_total,0) + COALESCE(p.sgst_total,0) - COALESCE(p.amount_paid,0)),0) FROM purchases p WHERE p.supplier_id = pt.id AND p.payment_status != 'paid') > 0
     `).all();
     const custRows = [...unpaidServices, ...unpaidOrders].map(r => ({
       customer: `${r.customer_name} / ${r.customer_mobile}`,

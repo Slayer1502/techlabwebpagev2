@@ -104,7 +104,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     { label: 'Service Req', icon: Wrench, path: '/tickets', roles: ['admin', 'sales', 'employee', 'technician'] },
     { label: 'Lead', icon: Crosshair, path: '/enquiry', roles: ['admin', 'sales'] },
     { label: 'Quotations', icon: FileText, path: '/quotations', roles: ['admin', 'sales'] },
-    { label: 'Orders', icon: ClipboardList, path: '/orders', roles: ['admin', 'sales', 'auditor'] },
+    { label: 'Bills', icon: ClipboardList, path: '/orders', roles: ['admin', 'sales', 'auditor'] },
     { label: 'Purchase', icon: ShoppingBag, path: '/purchases', roles: ['admin', 'sales'] },
     { label: 'Challans', icon: Truck, path: '/challans', roles: ['admin', 'sales'] },
     { label: 'Parties', icon: Users, path: '/parties', roles: ['admin', 'sales'] },

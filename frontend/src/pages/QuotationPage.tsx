@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { quotationService } from '../services/quotationService';
+import { challanService } from '../services/challanService';
 
 import {
   FileText,
@@ -14,7 +15,9 @@ import {
   MessageSquare,
   ChevronRight,
   Printer,
-  Pencil
+  Pencil,
+  Truck,
+  Loader2
 } from 'lucide-react';
 import { formatCurrencyValue, formatDateValue } from '../utils/helpers';
 import { Quotation } from '../types';
@@ -28,7 +31,32 @@ const QuotationPage = () => {
   const [search, setSearch] = useState('');
   const [editingQuote, setEditingQuote] = useState<Quotation | null>(null);
   const [viewingQuote, setViewingQuote] = useState<Quotation | null>(null);
+  const [generatingDc, setGeneratingDc] = useState(false);
   const queryClient = useQueryClient();
+
+  const handleGenerateDc = async () => {
+    if (!viewingQuote) return;
+    try {
+      setGeneratingDc(true);
+      const res = await challanService.createStandaloneChallan({
+        customerName: viewingQuote.customer_name,
+        customerMobile: viewingQuote.customer_mobile,
+        customerAddress: viewingQuote.customer_address,
+        items: (viewingQuote.items || []).map((it: any) => ({
+          productId: it.product_id || null,
+          itemName: it.product_name,
+          qty: it.quantity,
+          unitPrice: it.unit_price
+        }))
+      });
+      toast(`Delivery Challan generated: ${res.challan_number}`, 'success');
+      navigate('/challans');
+    } catch (err: any) {
+      toast(err?.response?.data?.error || 'Failed to generate Delivery Challan', 'error');
+    } finally {
+      setGeneratingDc(false);
+    }
+  };
 
   const { data: quotations, isLoading } = useQuery({
     queryKey: ['quotations'],
@@ -152,6 +180,14 @@ const QuotationPage = () => {
                           <Pencil className="h-4 w-4" /> Edit
                        </button>
                     )}
+                    <button
+                       onClick={handleGenerateDc}
+                       disabled={generatingDc}
+                       className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-green-700 transition-all disabled:opacity-50"
+                    >
+                       {generatingDc ? <Loader2 className="h-4 w-4 animate-spin" /> : <Truck className="h-4 w-4" />}
+                       Generate D.C.
+                    </button>
                     <button onClick={() => printQuotation(viewingQuote)} className="flex items-center gap-2 bg-blue/5 text-blue px-4 py-2 rounded-xl font-bold hover:bg-blue/10 transition-all">
                        <Printer className="h-4 w-4" /> Print
                     </button>

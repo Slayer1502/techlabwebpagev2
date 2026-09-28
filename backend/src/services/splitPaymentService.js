@@ -1,5 +1,61 @@
 const { db, nowIso } = require("../../db");
 
+// Applies payment entries to a product order.
+// entries: [{amount, paymentMode, paymentDate, paidAt?}]
+// Shared by splitPaymentService / recordOrderPayment / enquiry payment cascade.
+const applyOrderPayment = (orderId, entries) => {
+  const order = db.prepare("SELECT * FROM product_orders WHERE id = ?").get(orderId);
+  if (!order) throw new Error("Order not found");
+
+  const totalAmount = Number(order.total_amount) || 0;
+  const alreadyPaid = db.prepare(
+    "SELECT COALESCE(SUM(amount), 0) as t FROM order_payments WHERE order_id = ?"
+  ).get(orderId).t || 0;
+  const remaining = totalAmount - alreadyPaid;
+  if (remaining <= 0) throw new Error("Nothing left to collect");
+
+  let applied = 0;
+  const insertPayment = db.prepare(
+    "INSERT INTO order_payments (id, order_id, amount, payment_mode, paid_at, created_at) VALUES (?, ?, ?, ?, ?, ?)"
+  );
+  for (const e of entries) {
+    const canApply = Math.min(e.amount, remaining - applied);
+    if (canApply <= 0) continue;
+    insertPayment.run(
+      `OP-${orderId}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 4)}`,
+      orderId,
+      canApply,
+      e.paymentMode,
+      e.paidAt || e.paymentDate,
+      nowIso()
+    );
+    applied += canApply;
+  }
+
+  const newPaid = alreadyPaid + applied;
+  const settled = newPaid >= totalAmount;
+  const status = settled ? "paid" : newPaid > 0 ? "partial" : "pending";
+
+  let finalMode = entries[0].paymentMode;
+  if (settled) {
+    const modes = db.prepare("SELECT DISTINCT payment_mode FROM order_payments WHERE order_id = ?").all(orderId);
+    finalMode = modes.length > 1 ? "Mixed" : (modes[0] && modes[0].payment_mode) || finalMode;
+  }
+
+  db.prepare(
+    `UPDATE product_orders SET payment_status = ?, payment_mode = ?, payment_date = ? ${settled ? ", status = 'Completed'" : ""} WHERE id = ?`
+  ).run(status, finalMode || null, entries[0].paymentDate, orderId);
+
+  return {
+    entityType: "order",
+    totalAmount,
+    amountPaid: newPaid,
+    balance: totalAmount - newPaid,
+    paymentStatus: status,
+    received: applied,
+  };
+};
+
 // Records a split payment across multiple modes for a service request or order.
 // entries: [{amount, paymentMode, paymentDate}]
 // Returns summary of the new totals.
@@ -72,44 +128,7 @@ const splitPaymentService = ({ entityType, entityId, entries, discount }) => {
     }
 
     if (entityType === "order") {
-      const order = db.prepare("SELECT * FROM product_orders WHERE id = ?").get(entityId);
-      if (!order) throw new Error("Order not found");
-      const totalAmount = Number(order.total_amount) || 0;
-      const alreadyPaid = Number(order.amount_paid || 0);
-      const remaining = totalAmount - alreadyPaid;
-      if (remaining <= 0) throw new Error("Nothing left to collect");
-
-      let applied = 0;
-      const insertPayment = db.prepare(
-        "INSERT INTO order_payments (id, order_id, amount, payment_mode, paid_at, created_at) VALUES (?, ?, ?, ?, ?, ?)"
-      );
-      for (const e of entries) {
-        const canApply = Math.min(e.amount, remaining - applied);
-        if (canApply <= 0) continue;
-        insertPayment.run(
-          `OP-${entityId}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 4)}`,
-          entityId,
-          canApply,
-          e.paymentMode,
-          e.paidAt || e.paymentDate,
-          nowIso()
-        );
-        applied += canApply;
-      }
-      const newPaid = alreadyPaid + applied;
-      const settled = newPaid >= totalAmount;
-      const status = settled ? "paid" : newPaid > 0 ? "partial" : "pending";
-      db.prepare(
-        "UPDATE product_orders SET payment_status = ?, payment_mode = ?, payment_date = ? WHERE id = ?"
-      ).run(status, entries[0].paymentMode, entries[0].paymentDate, entityId);
-      return {
-        entityType,
-        totalAmount,
-        amountPaid: newPaid,
-        balance: totalAmount - newPaid,
-        paymentStatus: status,
-        received: applied,
-      };
+      return applyOrderPayment(entityId, entries);
     }
 
     throw new Error("Unsupported entityType: " + entityType);
@@ -118,4 +137,4 @@ const splitPaymentService = ({ entityType, entityId, entries, discount }) => {
   return transaction();
 };
 
-module.exports = { splitPaymentService };
+module.exports = { splitPaymentService, applyOrderPayment };

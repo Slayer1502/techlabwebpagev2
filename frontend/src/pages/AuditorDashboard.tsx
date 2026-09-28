@@ -101,10 +101,13 @@ const AuditorDashboard = () => {
             <div>
               <p className="text-[10px] font-bold text-text-soft uppercase tracking-wider">Today Collections</p>
               <p className="text-2xl font-black text-navy">
-                {formatCurrencyValue((summary.todayCash || 0) + (summary.todayUpi || 0))}
+                {formatCurrencyValue((summary.todayCash || 0) + (summary.todayUpi || 0) + (summary.todayBank || 0))}
               </p>
               <p className="text-[10px] text-text-soft font-bold mt-0.5">
-                Cash: {formatCurrencyValue(summary.todayCash || 0)} | UPI: {formatCurrencyValue(summary.todayUpi || 0)}
+                Cash: {formatCurrencyValue(summary.todayCash || 0)} | UPI: {formatCurrencyValue(summary.todayUpi || 0)}{(summary.todayBank || 0) > 0 ? ` | Bank: ${formatCurrencyValue(summary.todayBank || 0)}` : ''}
+              </p>
+              <p className="text-[11px] font-black mt-1 text-green-600">
+                Profit: {formatCurrencyValue(summary.todayProfit || 0)}
               </p>
             </div>
           </div>
@@ -166,7 +169,7 @@ const AuditorDashboard = () => {
                       <td className="px-4 py-4 font-semibold text-navy">{o.customer_name}</td>
                       <td className="px-4 py-4 font-black text-navy">{formatCurrencyValue(o.total_amount)}</td>
                       <td className="px-4 py-4">
-                        <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${o.status === 'Delivered' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                        <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${o.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
                           {o.status}
                         </span>
                       </td>

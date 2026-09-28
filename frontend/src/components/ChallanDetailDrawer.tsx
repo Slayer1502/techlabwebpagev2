@@ -35,6 +35,8 @@ const ChallanDetailDrawer = ({ challanId, onClose }: Props) => {
 
   const [busy, setBusy] = useState(false);
   const [isGst, setIsGst] = useState(true);
+  const [confirmBillOpen, setConfirmBillOpen] = useState(false);
+  const [selectedGst, setSelectedGst] = useState(true);
   const [receivedBy, setReceivedBy] = useState('');
   const [isReturnMode, setIsReturnMode] = useState(false);
   const [returns, setReturns] = useState<Record<number, number>>({});
@@ -43,6 +45,12 @@ const ChallanDetailDrawer = ({ challanId, onClose }: Props) => {
   const isBilled = challan?.billing_status === 'billed';
   const isCancelled = challan?.billing_status === 'cancelled';
   const isDelivered = !!challan?.delivered_at;
+
+  const challanTotal = challan?.items?.length
+    ? challan.items.reduce((s: number, it: any) => s + (Number(it.total_price) || (Number(it.qty) * Number(it.unit_price)) || 0), 0)
+    : Number(challan?.total_value) || 0;
+  const challanTaxable = Math.round(challanTotal / 1.18);
+  const challanGst = challanTotal - challanTaxable;
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['challan-detail', challanId] });
@@ -66,8 +74,9 @@ const ChallanDetailDrawer = ({ challanId, onClose }: Props) => {
   const handleConvertToBill = async () => {
     setBusy(true);
     try {
-      const res = await challanService.consolidateToBill([challanId], isGst);
+      const res = await challanService.consolidateToBill([challanId], selectedGst);
       toast('Converted to final bill!', 'success');
+      setConfirmBillOpen(false);
       refresh();
       if (window.confirm('View the new invoice?')) {
         window.open(`/api/sales/orders/${res.orderId}/invoice.pdf`, '_blank');
@@ -337,7 +346,7 @@ const ChallanDetailDrawer = ({ challanId, onClose }: Props) => {
                     Generate as GST bill
                  </label>
                  <button
-                   onClick={handleConvertToBill}
+                   onClick={() => { setSelectedGst(isGst); setConfirmBillOpen(true); }}
                    disabled={busy}
                    className="w-full py-4 bg-blue text-white rounded-2xl font-black uppercase tracking-widest hover:bg-blue-600 transition-all shadow-xl shadow-blue/20 flex items-center justify-center gap-3 disabled:opacity-60"
                  >
@@ -359,6 +368,87 @@ const ChallanDetailDrawer = ({ challanId, onClose }: Props) => {
            )}
         </div>
       </div>
+
+      {confirmBillOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-navy/20 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 bg-gray-50 border-b flex justify-between items-center">
+              <h3 className="font-bold text-navy uppercase text-xs tracking-widest">Generate Bill</h3>
+              <button onClick={() => setConfirmBillOpen(false)} className="p-1 hover:bg-gray-200 rounded-full transition-colors"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="p-6 space-y-5">
+              <div className="bg-navy p-5 rounded-2xl text-white flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] text-gray-400 uppercase font-black tracking-widest mb-1">Bill Value</p>
+                  <p className="text-2xl font-black">{formatCurrencyValue(challanTotal)}</p>
+                </div>
+                <FileText className="h-8 w-8 text-white/10" />
+              </div>
+
+              <div className="flex items-center justify-between bg-white border border-gray-100 rounded-xl px-4 py-3">
+                <div>
+                  <p className="text-xs font-black text-navy">{selectedGst ? 'GST Tax Invoice (18%)' : 'Non-GST Bill'}</p>
+                  <p className="text-[10px] text-text-soft font-semibold mt-0.5">
+                    {selectedGst ? 'CGST + SGST will be charged' : 'No tax components'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedGst(v => !v)}
+                  className={`relative w-12 h-7 rounded-full transition-colors shrink-0 ${selectedGst ? 'bg-green-500' : 'bg-gray-300'}`}
+                >
+                  <span className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all ${selectedGst ? 'left-[22px]' : 'left-0.5'}`}></span>
+                </button>
+              </div>
+
+              {selectedGst ? (
+                <div className="space-y-2 bg-soft border border-blue/10 rounded-2xl p-4 animate-in fade-in duration-200">
+                  <div className="flex justify-between text-xs font-bold text-navy">
+                    <span className="text-text-soft">Taxable base</span>
+                    <span>{formatCurrencyValue(challanTaxable)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs font-bold text-navy">
+                    <span className="text-text-soft">CGST @ 9%</span>
+                    <span>{formatCurrencyValue(Math.round(challanGst / 2))}</span>
+                  </div>
+                  <div className="flex justify-between text-xs font-bold text-navy">
+                    <span className="text-text-soft">SGST @ 9%</span>
+                    <span>{formatCurrencyValue(challanGst - Math.round(challanGst / 2))}</span>
+                  </div>
+                  <div className="flex justify-between text-sm font-black text-green-600 border-t border-gray-200 pt-2">
+                    <span>Grand Total</span>
+                    <span>{formatCurrencyValue(challanTotal)}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-soft p-4 rounded-2xl border border-blue/10 animate-in fade-in duration-200">
+                  <p className="text-xs text-blue font-bold flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4" /> Non-GST Bill
+                  </p>
+                  <p className="text-[10px] text-text-soft mt-1">This will generate a standard bill without tax components.</p>
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setConfirmBillOpen(false)}
+                  className="flex-1 py-3.5 bg-gray-100 text-navy rounded-xl font-black uppercase text-xs tracking-widest hover:bg-gray-200 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConvertToBill}
+                  disabled={busy}
+                  className="flex-1 py-3.5 bg-blue text-white rounded-xl font-black uppercase text-xs tracking-widest hover:bg-blue-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                  Confirm & Generate
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

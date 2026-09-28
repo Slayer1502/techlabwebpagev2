@@ -177,6 +177,9 @@ export interface Enquiry {
   final_received?: number;
   final_mode?: string;
   final_date?: string;
+  follow_up_date?: string;
+  order_total_amount?: number;
+  dc_total_value?: number;
 }
 
 export interface Quotation {

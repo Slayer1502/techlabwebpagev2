@@ -24,6 +24,10 @@ import PurchaseOrderModal from '../components/PurchaseOrderModal';
 import StockInModal from '../components/StockInModal';
 import UploadQuoteModal from '../components/UploadQuoteModal';
 import ReceiveOrderModal from '../components/ReceiveOrderModal';
+import PurchaseOrderPaymentModal from '../components/PurchaseOrderPaymentModal';
+import PurchaseOrderDetailDrawer from '../components/PurchaseOrderDetailDrawer';
+
+import DirectPurchasePaymentModal from '../components/DirectPurchasePaymentModal';
 
 const PurchasesPage = () => {
   const [activeTab, setTab] = useState<'orders' | 'quotes' | 'history'>('orders');
@@ -31,6 +35,9 @@ const PurchasesPage = () => {
   const [isStockInModalOpen, setIsStockInModalOpen] = useState(false);
   const [isUploadQuoteModalOpen, setIsUploadQuoteModalOpen] = useState(false);
   const [receivePoId, setReceivePoId] = useState<string | null>(null);
+  const [payPoId, setPayPoId] = useState<string | null>(null);
+  const [viewingPoId, setViewingPoId] = useState<string | null>(null);
+  const [payPurchaseId, setPayPurchaseId] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
 
@@ -140,13 +147,14 @@ const PurchasesPage = () => {
                           <th className="px-8 py-5">PO Reference</th>
                           <th className="px-8 py-5">Supplier</th>
                           <th className="px-8 py-5">Total Value</th>
+                          <th className="px-8 py-5">Payment</th>
                           <th className="px-8 py-5">Status</th>
                           <th className="px-8 py-5 text-right">Actions</th>
                        </tr>
                     </thead>
                     <tbody className="divide-y">
                        {ordersLoading ? (
-                          [1, 2, 3].map(i => <tr key={i} className="animate-pulse"><td colSpan={5} className="px-8 py-8"><div className="h-4 bg-gray-100 rounded-full w-full"></div></td></tr>)
+                          [1, 2, 3].map(i => <tr key={i} className="animate-pulse"><td colSpan={6} className="px-8 py-8"><div className="h-4 bg-gray-100 rounded-full w-full"></div></td></tr>)
                        ) : orders?.map((o: any) => (
                           <tr key={o.id} className="group hover:bg-soft/20 transition-colors">
 <td className="px-8 py-5">
@@ -164,23 +172,46 @@ const PurchasesPage = () => {
                                    <span className="text-sm font-semibold text-navy">{o.supplier_name}</span>
                                 </div>
                              </td>
-                             <td className="px-8 py-5 text-sm font-bold text-navy">
-                                {formatCurrencyValue(o.total_amount)}
-                             </td>
-                             <td className="px-8 py-5">
-                                <StatusBadge status={o.status} />
-                             </td>
+<td className="px-8 py-5 text-sm font-bold text-navy">
+                                 {formatCurrencyValue(o.total_amount)}
+                              </td>
+                              <td className="px-8 py-5">
+                                 {o.status === 'cancelled' ? (
+                                    <span className="text-[10px] font-bold text-gray-300 uppercase tracking-wider">—</span>
+                                 ) : (
+                                 <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${o.payment_status === 'paid' ? 'bg-green-100 text-green-600' : o.payment_status === 'partial' ? 'bg-orange-100 text-orange-600' : 'bg-red-100 text-red-600'}`}>
+                                    {o.payment_status || 'pending'}
+                                 </span>
+                                 )}
+                                 {Number(o.amount_paid) > 0 && o.payment_status !== 'paid' && (
+                                    <p className="text-[10px] text-text-soft font-bold mt-1">{formatCurrencyValue(o.amount_paid)} paid · {formatCurrencyValue((o.total_amount || 0) - (o.amount_paid || 0))} left</p>
+                                 )}
+                                 {o.status === 'received' && o.payment_status !== 'paid' && (
+                                    <button
+                                       onClick={() => setPayPoId(o.id)}
+                                       className="mt-1.5 block px-3 py-1.5 bg-navy text-white text-[10px] font-bold uppercase rounded-lg hover:opacity-90 transition-all"
+                                    >
+                                       Record Payment
+                                    </button>
+                                 )}
+                              </td>
+                              <td className="px-8 py-5">
+                                 <StatusBadge status={o.status} />
+                              </td>
                              <td className="px-8 py-5 text-right">
-<div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                 <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                     {['ordered', 'pending'].includes(o.status) && (
                                        <button
-                                         onClick={() => setReceivePoId(o.id)}
+                                         onClick={(e) => { e.stopPropagation(); setReceivePoId(o.id); }}
                                          className="px-4 py-1.5 bg-blue text-white text-[10px] font-bold uppercase rounded-lg hover:bg-blue-600 transition-colors"
                                        >
                                           Receive Goods
                                        </button>
                                     )}
-                                    <button className="p-2 text-text-soft hover:bg-white hover:text-blue rounded-lg border border-transparent shadow-sm transition-all">
+                                    <button
+                                      onClick={() => setViewingPoId(o.id)}
+                                      className="p-2 text-text-soft hover:bg-white hover:text-blue rounded-lg border border-transparent shadow-sm transition-all"
+                                    >
                                        <ChevronRight className="h-4 w-4" />
                                     </button>
                                  </div>
@@ -343,11 +374,22 @@ const PurchasesPage = () => {
                              <td className="px-8 py-5 text-sm font-bold text-navy">
                                 {formatCurrencyValue(p.total_cost)}
                              </td>
-                             <td className="px-8 py-5">
-                                <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${p.payment_status === 'paid' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                                   {p.payment_status}
-                                </span>
-                             </td>
+<td className="px-8 py-5">
+                                 <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${p.payment_status === 'paid' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                                    {p.payment_status}
+                                 </span>
+                                 {Number(p.amount_paid) > 0 && p.payment_status !== 'paid' && (
+                                    <p className="text-[10px] text-text-soft font-bold mt-1">{formatCurrencyValue(p.amount_paid)} paid · {formatCurrencyValue((p.total_cost || 0) - (p.amount_paid || 0))} left</p>
+                                 )}
+                                 {p.payment_status !== 'paid' && (
+                                    <button
+                                       onClick={() => setPayPurchaseId(p.id)}
+                                       className="mt-1.5 block px-3 py-1.5 bg-navy text-white text-[10px] font-bold uppercase rounded-lg hover:opacity-90 transition-all"
+                                    >
+                                       Record Payment
+                                    </button>
+                                 )}
+                              </td>
                           </tr>
                        ))}
                        {(!purchases || purchases.length === 0) && !purchasesLoading && (
@@ -389,6 +431,33 @@ const PurchasesPage = () => {
              setReceivePoId(null);
              queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
            }}
+        />
+      )}
+      {payPoId && (
+        <PurchaseOrderPaymentModal
+           po={orders?.find((o: any) => o.id === payPoId)}
+           onClose={() => setPayPoId(null)}
+           onSuccess={() => {
+             setPayPoId(null);
+             queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+             queryClient.invalidateQueries({ queryKey: ['direct-purchases'] });
+           }}
+        />
+      )}
+      {payPurchaseId && (
+        <DirectPurchasePaymentModal
+           purchase={purchases?.find((p: any) => p.id === payPurchaseId)}
+           onClose={() => setPayPurchaseId(null)}
+           onSuccess={() => {
+             setPayPurchaseId(null);
+             queryClient.invalidateQueries({ queryKey: ['direct-purchases'] });
+           }}
+        />
+      )}
+      {viewingPoId && (
+        <PurchaseOrderDetailDrawer
+          poId={viewingPoId}
+          onClose={() => setViewingPoId(null)}
         />
       )}
     </Layout>

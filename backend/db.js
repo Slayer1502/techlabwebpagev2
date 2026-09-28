@@ -4,8 +4,11 @@ const bcrypt = require("bcryptjs");
 
 const dbPath = path.join(__dirname, "..", "techlab_v2.sqlite");
 const db = new Database(dbPath);
-
-db.pragma("journal_mode = WAL");
+try {
+  db.pragma("journal_mode = DELETE");
+} catch (e) {
+  // fallback
+}
 
 const getCustomerByMobile = (mobile) => {
   const orders = db.prepare("SELECT customer_name FROM product_orders WHERE customer_mobile = ? ORDER BY created_at DESC LIMIT 1").get(mobile);
@@ -47,6 +50,7 @@ const initializeDatabase = () => {
     "updated_by_employee_name TEXT," +
     "supplier_id TEXT," +
     "active INTEGER NOT NULL DEFAULT 1," +
+    "cost_price INTEGER NOT NULL DEFAULT 0," +
     "FOREIGN KEY(supplier_id) REFERENCES suppliers(id)" +
     ");" +
 
@@ -69,6 +73,7 @@ const initializeDatabase = () => {
     "product_id TEXT NOT NULL," +
     "product_name TEXT NOT NULL," +
     "price INTEGER NOT NULL," +
+    "cost_amount INTEGER NOT NULL DEFAULT 0," +
     "FOREIGN KEY(order_id) REFERENCES product_orders(id)" +
     ");" +
 
@@ -168,6 +173,11 @@ const initializeDatabase = () => {
     "notes TEXT," +
     "status TEXT NOT NULL DEFAULT 'ordered'," +
     "total_amount INTEGER NOT NULL DEFAULT 0," +
+    "amount_paid INTEGER NOT NULL DEFAULT 0," +
+    "payment_status TEXT NOT NULL DEFAULT 'pending'," +
+    "payment_mode TEXT," +
+    "payment_date TEXT," +
+    "service_request_id TEXT," +
     "created_at TEXT NOT NULL," +
     "FOREIGN KEY(supplier_id) REFERENCES parties(id)" +
     ");" +
@@ -470,6 +480,18 @@ const initializeDatabase = () => {
     db.exec("ALTER TABLE products ADD COLUMN image_url TEXT");
   }
 
+  if (!columnNames.includes("cost_price")) {
+    db.exec("ALTER TABLE products ADD COLUMN cost_price INTEGER NOT NULL DEFAULT 0");
+    db.exec(`
+      UPDATE products SET cost_price = (
+        SELECT unit_cost FROM purchases p
+        WHERE p.product_id = products.id
+        ORDER BY p.purchase_date DESC, p.created_at DESC
+        LIMIT 1
+      ) WHERE EXISTS (SELECT 1 FROM purchases p WHERE p.product_id = products.id AND p.unit_cost > 0)
+    `);
+  }
+
   const orderColumns = db.prepare("PRAGMA table_info(product_orders)").all();
   const orderColumnNames = orderColumns.map((column) => column.name);
   if (!orderColumnNames.includes("payment_status")) {
@@ -507,6 +529,17 @@ const initializeDatabase = () => {
   if (!orderItemColumnNames.includes("qty")) {
     db.exec("ALTER TABLE order_items ADD COLUMN qty INTEGER DEFAULT 1");
   }
+  if (!orderItemColumnNames.includes("cost_amount")) {
+    db.exec("ALTER TABLE order_items ADD COLUMN cost_amount INTEGER NOT NULL DEFAULT 0");
+  }
+  db.exec(`
+    UPDATE order_items
+    SET cost_amount = qty * COALESCE(
+      (SELECT cost_price FROM products WHERE products.id = order_items.product_id), 0
+    )
+    WHERE cost_amount = 0 AND product_id IS NOT NULL
+      AND EXISTS (SELECT 1 FROM products WHERE products.id = order_items.product_id AND products.cost_price > 0)
+  `);
 
   const serviceRequestColumns = db.prepare("PRAGMA table_info(service_requests)").all();
   const serviceRequestColumnNames = serviceRequestColumns.map((column) => column.name);
@@ -918,15 +951,16 @@ const getFy = (dateStr) => {
 };
 
 // Next INVOICE_series bill number for the FY of the given date, e.g. INV-26-27-0001
-const nextBillNumber = (dateStr) => {
+const nextBillNumber = (dateStr, isGst = false) => {
   const fy = getFy(dateStr);
-  const key = `bill_seq_${fy}`;
+  const key = isGst ? `bill_seq_gst_${fy}` : `bill_seq_${fy}`;
+  const prefix = isGst ? `GSTINV-${fy}-` : `INV-${fy}-`;
   const tx = db.transaction(() => {
     const row = db.prepare("SELECT value FROM business_settings WHERE key = ?").get(key);
     const next = (row ? parseInt(row.value, 10) || 0 : 0) + 1;
     db.prepare("INSERT INTO business_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
       .run(key, String(next));
-    return `INV-${fy}-${String(next).padStart(4, "0")}`;
+    return `${prefix}${String(next).padStart(4, "0")}`;
   });
   return tx();
 };
@@ -1514,6 +1548,12 @@ try {
   const poRfqCols = db.prepare("PRAGMA table_info(purchase_orders)").all().map(c => c.name);
   if (!poRfqCols.includes("service_request_id")) {
     db.exec("ALTER TABLE purchase_orders ADD COLUMN service_request_id TEXT");
+  }
+  if (!poRfqCols.includes("amount_paid")) {
+    db.exec("ALTER TABLE purchase_orders ADD COLUMN amount_paid INTEGER NOT NULL DEFAULT 0");
+    db.exec("ALTER TABLE purchase_orders ADD COLUMN payment_status TEXT NOT NULL DEFAULT 'pending'");
+    db.exec("ALTER TABLE purchase_orders ADD COLUMN payment_mode TEXT");
+    db.exec("ALTER TABLE purchase_orders ADD COLUMN payment_date TEXT");
   }
   db.exec("CREATE INDEX IF NOT EXISTS idx_supplier_quotes_service ON supplier_quotes(service_request_id)");
 } catch (e) {
