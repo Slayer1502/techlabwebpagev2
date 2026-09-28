@@ -23,6 +23,7 @@ import { productService } from '../services/productService';
 import { formatCurrencyValue } from '../utils/helpers';
 import { Enquiry, Product } from '../types';
 import { toast } from '../utils/toast';
+import MarginEngineBar from './MarginEngineBar';
 
 export interface QuoteLine {
   productId: any;
@@ -335,6 +336,7 @@ const QuotationComposer = ({ context, initialValidUntil = '', onClose, onSuccess
 
         <div className="flex flex-col lg:flex-row gap-6 p-8 overflow-y-auto flex-1">
           <div className="flex-1 min-w-0 flex flex-col gap-5">
+            <MarginEngineBar items={lines.map(l => ({ name: l.name, quantity: l.quantity, costPrice: l.costPrice, quotedPrice: l.quotedPrice }))} />
             <div className="relative">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-text-soft" />
               <input
