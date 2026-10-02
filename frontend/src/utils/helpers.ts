@@ -8,7 +8,13 @@ export const formatCurrencyValue = (amount: number) => {
 
 export const formatDateValue = (value: string) => {
   const normalized = String(value || "").trim();
-  return normalized ? normalized.slice(0, 10) : "-";
+  if (!normalized) return "-";
+  const datePart = normalized.slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
+    const [year, month, day] = datePart.split("-");
+    return `${day}-${month}-${year}`;
+  }
+  return datePart;
 };
 
 export const getEnquiryQuoteTotal = (quoteOptionsRaw: string | undefined | null) => {

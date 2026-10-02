@@ -26,7 +26,13 @@ const normalizeUsedItems = (usedItems) => {
 
 const formatDateValue = (value) => {
   const normalized = String(value || "").trim();
-  return normalized ? normalized.slice(0, 10) : "-";
+  if (!normalized) return "-";
+  const datePart = normalized.slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
+    const [year, month, day] = datePart.split("-");
+    return `${day}-${month}-${year}`;
+  }
+  return datePart;
 };
 
 const formatCurrencyValue = (amount) => `Rs. ${Number(amount || 0).toLocaleString("en-IN")}`;
