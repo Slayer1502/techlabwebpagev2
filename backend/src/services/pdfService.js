@@ -819,9 +819,14 @@ const generateQuotationPdf = async (quotationId) => {
     doc.fillColor(PDF_COLORS.TEXT).fontSize(9).font("Helvetica").text(`Notes: ${quotation.notes}`, 48, doc.y + 20);
   }
 
-  doc.fontSize(9).font("Helvetica-Oblique").fillColor(PDF_COLORS.TEXT_SOFT).text(
-    "This quotation is valid until the date shown above. Prices include applicable taxes unless stated otherwise. Subject to Karur jurisdiction.",
-    48, doc.y + 20
+  doc.fontSize(8.5).font("Helvetica-Bold").fillColor(PDF_COLORS.NAVY).text("TERMS & CONDITIONS:", 48, doc.y + 15);
+  doc.fontSize(8).font("Helvetica").fillColor(PDF_COLORS.TEXT_SOFT).text(
+    "1. Validity: This quotation is valid until the date shown above.\n" +
+    "2. Payment Terms: 50% advance along with order confirmation, balance upon delivery/completion.\n" +
+    "3. Delivery & Installation: Subject to stock availability and site readiness.\n" +
+    "4. Warranty: Standard manufacturer warranty applies to all hardware items.\n" +
+    "5. Jurisdiction: All disputes subject to Karur jurisdiction.",
+    48, doc.y + 4, { width: 330, lineGap: 2 }
   );
 
   const sigY = Math.max(doc.y + 25, 710);
