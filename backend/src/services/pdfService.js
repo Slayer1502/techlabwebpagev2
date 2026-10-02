@@ -822,9 +822,10 @@ const generateQuotationPdf = async (quotationId) => {
   doc.fontSize(8.5).font("Helvetica-Bold").fillColor(PDF_COLORS.NAVY).text("TERMS & CONDITIONS:", 48, doc.y + 15);
   doc.fontSize(8).fillColor(PDF_COLORS.TEXT_SOFT);
 
+  const validUntilStr = quotation.valid_until ? formatDateValue(quotation.valid_until) : "the date shown above";
   doc.font("Helvetica-Bold").text("1. Validity: ", { continued: true, width: 330 })
      .font("Helvetica").text("This quotation is ", { continued: true })
-     .font("Helvetica-Bold").text("valid until the date shown above", { continued: true })
+     .font("Helvetica-Bold").text(`valid until ${validUntilStr}`, { continued: true })
      .font("Helvetica").text(".");
 
   doc.font("Helvetica-Bold").text("2. Payment Terms: ", { continued: true })
