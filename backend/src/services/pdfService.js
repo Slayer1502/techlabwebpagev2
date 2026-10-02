@@ -820,14 +820,28 @@ const generateQuotationPdf = async (quotationId) => {
   }
 
   doc.fontSize(8.5).font("Helvetica-Bold").fillColor(PDF_COLORS.NAVY).text("TERMS & CONDITIONS:", 48, doc.y + 15);
-  doc.fontSize(8).font("Helvetica").fillColor(PDF_COLORS.TEXT_SOFT).text(
-    "1. Validity: This quotation is valid until the date shown above.\n" +
-    "2. Payment Terms: 50% advance along with order confirmation, balance upon delivery/completion.\n" +
-    "3. Delivery & Installation: Subject to stock availability and site readiness.\n" +
-    "4. Warranty: Standard manufacturer warranty applies to all hardware items.\n" +
-    "5. Jurisdiction: All disputes subject to Karur jurisdiction.",
-    48, doc.y + 4, { width: 330, lineGap: 2 }
-  );
+  doc.fontSize(8).fillColor(PDF_COLORS.TEXT_SOFT);
+
+  doc.font("Helvetica-Bold").text("1. Validity: ", { continued: true, width: 330 })
+     .font("Helvetica").text("This quotation is ", { continued: true })
+     .font("Helvetica-Bold").text("valid until the date shown above", { continued: true })
+     .font("Helvetica").text(".");
+
+  doc.font("Helvetica-Bold").text("2. Payment Terms: ", { continued: true })
+     .font("Helvetica").text("Requires ", { continued: true })
+     .font("Helvetica-Bold").text("50% advance", { continued: true })
+     .font("Helvetica").text(" along with order confirmation, balance upon delivery/completion.");
+
+  doc.font("Helvetica-Bold").text("3. Delivery & Installation: ", { continued: true })
+     .font("Helvetica").text("Subject to stock availability and site readiness.");
+
+  doc.font("Helvetica-Bold").text("4. Warranty: ", { continued: true })
+     .font("Helvetica").text("Standard manufacturer warranty applies to all hardware items.");
+
+  doc.font("Helvetica-Bold").text("5. Jurisdiction: ", { continued: true })
+     .font("Helvetica").text("All disputes subject to ", { continued: true })
+     .font("Helvetica-Bold").text("Karur jurisdiction", { continued: true })
+     .font("Helvetica").text(".");
 
   const sigY = Math.max(doc.y + 25, 710);
   doc.strokeColor(PDF_COLORS.GRAY).lineWidth(0.5).dash(5, { space: 10 }).moveTo(400, sigY).lineTo(547, sigY).stroke();
