@@ -42,6 +42,7 @@ const SurveyForm = () => {
   const [additionalParts, setAdditionalParts] = useState<PartRow[]>([]);
   const [cables, setCables] = useState<CableRow[]>([]);
   const [mountRackType, setMountRackType] = useState('');
+  const [mountRackQty, setMountRackQty] = useState(1);
   const [mountPoles, setMountPoles] = useState(0);
   const [mountBoxes, setMountBoxes] = useState(0);
   const [mountOther, setMountOther] = useState('');
@@ -87,7 +88,9 @@ const SurveyForm = () => {
       formData.append('cables', JSON.stringify(cables.map(c => ({ ...c, length: 0 }))));
 
       formData.append('mounting', JSON.stringify({
-        rack: mountRackType,
+        rack: mountRackType ? `${mountRackQty}x ${mountRackType}` : '',
+        rackQty: mountRackQty,
+        rackType: mountRackType,
         poles: mountPoles,
         boxes: mountBoxes,
         other: mountOther
@@ -274,11 +277,11 @@ const SurveyForm = () => {
               title="Hardware & Mounting"
               subtitle="Rack, poles, and housing"
             />
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               <div className="space-y-1">
-                <label className="text-xs font-bold text-text-soft uppercase text-center block">Rack</label>
+                <label className="text-xs font-bold text-text-soft uppercase text-center block">Rack Type</label>
                 <select
-                  className="w-full text-center bg-white border-2 border-gray-200 rounded-xl py-2 font-bold outline-none focus:border-blue/40 transition-all"
+                  className="w-full text-center bg-white border-2 border-gray-200 rounded-xl py-2 font-bold outline-none focus:border-blue/40 transition-all text-xs"
                   value={mountRackType}
                   onChange={e => setMountRackType(e.target.value)}
                 >
@@ -286,14 +289,23 @@ const SurveyForm = () => {
                   <option value="Wall Rack">Wall Rack</option>
                   <option value="Floor Rack">Floor Rack</option>
                   <option value="Ceiling Rack">Ceiling Rack</option>
-                  <option value="No Rack">No Rack</option>
                 </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-text-soft uppercase text-center block">Rack Qty</label>
+                <input
+                  type="number"
+                  min="1"
+                  className="w-full text-center bg-white border-2 border-gray-200 rounded-xl py-2 font-bold text-sm"
+                  value={mountRackQty}
+                  onChange={e => setMountRackQty(Number(e.target.value))}
+                />
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-bold text-text-soft uppercase text-center block">Poles</label>
                 <input
                   type="number"
-                  className="w-full text-center bg-white border-2 border-gray-200 rounded-xl py-2 font-bold"
+                  className="w-full text-center bg-white border-2 border-gray-200 rounded-xl py-2 font-bold text-sm"
                   value={mountPoles}
                   onChange={e => setMountPoles(Number(e.target.value))}
                 />
