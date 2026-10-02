@@ -36,6 +36,7 @@ const SurveyForm = () => {
   const [nvrNeeded, setNvrNeeded] = useState('no');
   const [nvrType, setNvrType] = useState('NVR');
   const [nvrChannels, setNvrChannels] = useState('4');
+  const [nvrQty, setNvrQty] = useState('1');
   const [nvrBrand, setNvrBrand] = useState('');
   const [powerUnits, setPowerUnits] = useState<PowerRow[]>([]);
   const [additionalParts, setAdditionalParts] = useState<PartRow[]>([]);
@@ -77,6 +78,7 @@ const SurveyForm = () => {
         needed: nvrNeeded === 'yes',
         type: nvrType,
         channels: Number(nvrChannels),
+        qty: Number(nvrQty) || 1,
         brand: nvrBrand,
         powerUnits
       }));
@@ -185,23 +187,23 @@ const SurveyForm = () => {
 
                 {nvrNeeded === 'yes' && (
                   <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-3 gap-3">
                       <div className="space-y-1">
                         <label className="text-xs font-bold text-text-soft uppercase">Type</label>
                         <select
-                          className="w-full bg-white border-2 border-gray-200 rounded-xl px-4 py-2.5 outline-none focus:border-blue/40 transition-all"
+                          className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-blue/40 transition-all"
                           value={nvrType}
                           onChange={e => setNvrType(e.target.value)}
                         >
-                          <option value="NVR">NVR (IP)</option>
-                          <option value="DVR">DVR (Analog)</option>
-                          <option value="XVR">XVR (Hybrid)</option>
+                          <option value="NVR">NVR</option>
+                          <option value="DVR">DVR</option>
+                          <option value="XVR">XVR</option>
                         </select>
                       </div>
                       <div className="space-y-1">
                         <label className="text-xs font-bold text-text-soft uppercase">Channels</label>
                         <select
-                          className="w-full bg-white border-2 border-gray-200 rounded-xl px-4 py-2.5 outline-none focus:border-blue/40 transition-all"
+                          className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-blue/40 transition-all"
                           value={nvrChannels}
                           onChange={e => setNvrChannels(e.target.value)}
                         >
@@ -211,6 +213,16 @@ const SurveyForm = () => {
                           <option value="32">32 CH</option>
                           <option value="64">64 CH</option>
                         </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-text-soft uppercase">Quantity</label>
+                        <input
+                          type="number"
+                          min="1"
+                          className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-blue/40 transition-all text-sm font-bold"
+                          value={nvrQty}
+                          onChange={e => setNvrQty(e.target.value)}
+                        />
                       </div>
                     </div>
                     <div className="space-y-1">

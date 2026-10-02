@@ -122,7 +122,7 @@ const ServiceDetailDrawer = ({ request, onClose, onUpdate }: Props) => {
       items.push({
         product_name: `${nvrDvr.type || 'NVR'} ${nvrDvr.channels || '-'}ch${nvrDvr.brand ? ' ' + nvrDvr.brand : ''}`.trim(),
         unit_price: 0,
-        quantity: 1
+        quantity: Number(nvrDvr.qty) || 1
       });
       if (nvrDvr.power && nvrDvr.power.type && nvrDvr.power.channels) {
         items.push({
