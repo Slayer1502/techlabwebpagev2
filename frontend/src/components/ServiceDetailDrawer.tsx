@@ -111,11 +111,13 @@ const ServiceDetailDrawer = ({ request, onClose, onUpdate }: Props) => {
 
     cameras.forEach((c: any) => {
       const label = c.formFactor || c.type || 'Camera';
-      let name = `${c.count || 1}x ${label}`;
-      if (c.technology) name += ` ${c.technology}`;
-      if (c.resolution) name += ` ${c.resolution}`;
-      if (c.mounting) name += ` @ ${c.mounting}`;
-      items.push({ product_name: name, unit_price: 0, quantity: 1 });
+      let name = `${c.technology || 'IP'} ${label} ${c.resolution || ''}`.trim();
+      if (c.mounting) name += ` (${c.mounting} Mount)`;
+      items.push({
+        product_name: name,
+        unit_price: 0,
+        quantity: Number(c.count) || 1
+      });
     });
 
     if (nvrDvr.needed && nvrDvr.type) {
@@ -124,32 +126,53 @@ const ServiceDetailDrawer = ({ request, onClose, onUpdate }: Props) => {
         unit_price: 0,
         quantity: Number(nvrDvr.qty) || 1
       });
-      if (nvrDvr.power && nvrDvr.power.type && nvrDvr.power.channels) {
-        items.push({
-          product_name: `${nvrDvr.power.type} ${nvrDvr.power.channels}ch${nvrDvr.power.brand ? ' ' + nvrDvr.power.brand : ''}`.trim(),
-          unit_price: 0,
-          quantity: 1
-        });
-      }
     }
 
     cables.forEach((c: any) => {
       const type = c.type || 'Cable';
       const mtrBased = /cat6|fiber|optical|coaxial|rg59|power cable|hdmi|cable/i.test(type);
       const name = mtrBased ? `${type} (per mtr)` : type;
-      items.push({ product_name: name, unit_price: 0, quantity: 1 });
+      items.push({
+        product_name: name,
+        unit_price: 0,
+        quantity: Number(c.qty || c.length) || 1
+      });
     });
 
-    if (mounting.rack) items.push({ product_name: `${mounting.rack}`, unit_price: 0, quantity: 1 });
-    if (mounting.poles) items.push({ product_name: `${mounting.poles} pole${mounting.poles > 1 ? 's' : ''}`, unit_price: 0, quantity: 1 });
-    if (mounting.boxes) items.push({ product_name: `${mounting.boxes} camera box${mounting.boxes > 1 ? 'es' : ''}`, unit_price: 0, quantity: 1 });
-    if (mounting.other) items.push({ product_name: String(mounting.other), unit_price: 0, quantity: 1 });
+    if (mounting.rack) {
+      items.push({
+        product_name: mounting.rackType || mounting.rack || 'Rack',
+        unit_price: 0,
+        quantity: Number(mounting.rackQty) || 1
+      });
+    }
+    if (mounting.poles) {
+      items.push({
+        product_name: 'Pole',
+        unit_price: 0,
+        quantity: Number(mounting.poles) || 1
+      });
+    }
+    if (mounting.boxes) {
+      items.push({
+        product_name: 'Camera Junction Box',
+        unit_price: 0,
+        quantity: Number(mounting.boxes) || 1
+      });
+    }
+    if (mounting.other) {
+      items.push({
+        product_name: String(mounting.other),
+        unit_price: 0,
+        quantity: 1
+      });
+    }
 
     additionalParts.forEach((p: any) => {
       items.push({
-        product_name: `${p.qty || 1}x ${p.name}${p.notes ? ' (' + p.notes + ')' : ''}`,
+        product_name: p.name || p.product_name || 'Part',
         unit_price: 0,
-        quantity: 1
+        quantity: Number(p.qty) || 1
       });
     });
 
