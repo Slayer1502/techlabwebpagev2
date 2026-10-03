@@ -20,7 +20,7 @@ const crypto = require("crypto");
 
 const ROOT = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(ROOT, "backup_config.json"), "utf8"));
-const destRoot = CONFIG.destination.root;
+const destRoot = (CONFIG.destination && CONFIG.destination.root) || (CONFIG.destinations && CONFIG.destinations[0] && CONFIG.destinations[0].root) || "";
 
 const dbLive = path.join(ROOT, CONFIG.source.dbFile);
 const envLive = CONFIG.source.envFile ? path.join(ROOT, CONFIG.source.envFile) : null;
