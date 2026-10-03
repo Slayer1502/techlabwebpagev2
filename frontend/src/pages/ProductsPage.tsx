@@ -12,13 +12,16 @@ import {
   Filter,
   MoreVertical,
   CheckCircle2,
-  Image as ImageIcon
+  Image as ImageIcon,
+  ShoppingBag
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { formatCurrencyValue } from '../utils/helpers';
 import ProductModal from '../components/ProductModal';
 import { Product } from '../types';
 
 const ProductsPage = () => {
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -176,6 +179,23 @@ const ProductsPage = () => {
                       })()}
                     </div>
                   </div>
+
+                  {(() => {
+                    const minStock = product.min_stock ?? 5;
+                    const low = product.stock <= minStock;
+                    if (!low) return null;
+                    return (
+                      <div className="mt-3 pt-3 border-t border-dashed flex justify-between items-center">
+                        <span className="text-[10px] text-red-600 font-bold uppercase">Restock Needed</span>
+                        <button
+                          onClick={() => navigate('/purchases')}
+                          className="px-3 py-1.5 bg-orange-600 text-white rounded-xl text-[10px] font-black uppercase tracking-wider hover:bg-orange-700 transition-all flex items-center gap-1.5 shadow-sm"
+                        >
+                          <ShoppingBag className="h-3.5 w-3.5" /> Restock PO
+                        </button>
+                      </div>
+                    );
+                  })()}
 
                   {product.discountPercent > 0 && (
                     <div className="absolute top-10 left-0 bg-green-500 text-white text-[8px] font-black py-1 px-3 rounded-r-lg shadow-sm uppercase tracking-widest z-10">

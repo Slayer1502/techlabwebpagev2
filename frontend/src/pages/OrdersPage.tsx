@@ -53,18 +53,19 @@ const OrdersPage = () => {
     const mobile = String(o.customer_mobile || '').replace(/[^0-9]/g, '');
     if (!mobile) return toast('No customer mobile number available', 'error');
 
+    const isUnpaid = o.payment_status !== 'paid';
     const msg = [
       `Dear ${o.customer_name || 'Customer'},`,
       ``,
-      `Thank you for choosing TECHLAB. Here are your bill details:`,
+      isUnpaid ? `🔔 *Payment Reminder — Balance Due*` : `✅ *Invoice Receipt*`,
       ``,
       `*Bill No:* ${o.bill_number || o.id}`,
-      `*Bill Type:* ${o.source_type === 'service' ? 'Service' : 'Product'}`,
-      `*Bill Date:* ${formatDateValue(o.created_at)}`,
+      `*Date:* ${formatDateValue(o.created_at)}`,
       `*Total Amount:* ${formatCurrencyValue(o.total_amount)}`,
-      `*Payment Status:* ${(o.payment_status || 'PENDING').toUpperCase()}`,
+      isUnpaid ? `*Status:* PENDING PAYMENT` : `*Status:* PAID`,
       ``,
-      `If you have any questions, feel free to contact us.`,
+      isUnpaid ? `Please clear your pending dues at your earliest convenience. Thank you!` : `Thank you for your prompt payment!`,
+      ``,
       `~ TECHLAB Team`
     ].filter(Boolean).join('\n');
 
