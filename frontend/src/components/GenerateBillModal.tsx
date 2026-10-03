@@ -79,6 +79,19 @@ const GenerateBillModal = ({ request, onClose, onSuccess }: Props) => {
           items = used.map((i: any) => ({ desc: i.name, qty: i.qty, rate: i.price, amount: i.price * i.qty }));
         }
 
+        // Always merge any remaining used_items (service charges, labor, extra parts)
+        const usedAll = (() => { try { return JSON.parse(request.used_items || '[]'); } catch { return []; } })();
+        const existingNames = new Set(items.map(i => norm(i.desc)));
+        const extraUsed = usedAll
+          .filter((u: any) => !existingNames.has(norm(u.name)))
+          .map((u: any) => ({
+            desc: u.name,
+            qty: Number(u.qty) || 1,
+            rate: Number(u.price) || 0,
+            amount: (Number(u.qty) || 1) * (Number(u.price) || 0)
+          }));
+        items = [...items, ...extraUsed];
+
         if (!cancelled) {
           setLineItems(items);
           const total = items.reduce((s: number, l: LineItem) => s + l.amount, 0);
