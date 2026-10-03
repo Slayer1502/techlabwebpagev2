@@ -7,8 +7,8 @@
   },
   "destinations": [
     {
-      "label": "onprem-share",
-      "root": "\\\\192.168.1.15\\F\\OFC FILES\\TECHLAB"
+      "label": "netgear-nas",
+      "root": "Z:\\TECHLAB"
     },
     {
       "label": "google-drive",

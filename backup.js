@@ -64,8 +64,12 @@ function finalize(dbSrc, snapPath) {
       const destRoot = dest.root;
       if (!destRoot) { log(`SKIP ${dest.label || "dest"}: no root defined`); continue; }
       if (!fs.existsSync(destRoot)) {
-        log(`SKIP ${dest.label || "dest"}: not reachable -> ${destRoot}`);
-        continue;
+        try {
+          fs.mkdirSync(destRoot, { recursive: true });
+        } catch (e) {
+          log(`SKIP ${dest.label || "dest"}: not reachable -> ${destRoot}`);
+          continue;
+        }
       }
       const destFolder = path.join(destRoot, stamp());
       fs.mkdirSync(destFolder, { recursive: true });
