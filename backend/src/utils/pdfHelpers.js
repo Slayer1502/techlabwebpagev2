@@ -34,7 +34,7 @@ const drawPdfHeader = (doc, title) => {
 
   const headerBottom = gstin ? 130 : 120;
   doc.strokeColor(PDF_COLORS.NAVY).lineWidth(1.5).moveTo(48, headerBottom).lineTo(547, headerBottom).stroke();
-  doc.y = headerBottom + 10;
+  doc.y = headerBottom + 12;
 };
 
 const drawPdfFooter = (doc) => {
@@ -51,42 +51,62 @@ const drawPdfFooter = (doc) => {
 const drawPdfSummaryCards = (doc, items) => {
   if (!items || !items.length) return;
 
-  const cardWidth = 160;
-  const cardHeight = 50;
+  const cols = items.length <= 4 ? items.length : 3;
   const gap = 10;
+  const printableWidth = 500;
+  const cardWidth = Math.floor((printableWidth - (gap * (cols - 1))) / cols);
+  const cardHeight = 44;
   let startX = 48;
   let startY = doc.y;
 
   items.forEach((item, index) => {
-    if (startX + cardWidth > 547) {
+    const colIdx = index % cols;
+    if (colIdx === 0 && index > 0) {
       startX = 48;
       startY += cardHeight + gap;
     }
 
     doc.rect(startX, startY, cardWidth, cardHeight).fillAndStroke(PDF_COLORS.LIGHT_GRAY, PDF_COLORS.GRAY);
-    doc.fillColor(PDF_COLORS.TEXT_SOFT).fontSize(9).font("Helvetica").text(item.label, startX + 10, startY + 12);
-    doc.fillColor(PDF_COLORS.NAVY).fontSize(12).font("Helvetica-Bold").text(String(item.value), startX + 10, startY + 28);
+    doc.fillColor(PDF_COLORS.TEXT_SOFT).fontSize(8).font("Helvetica").text(item.label.toUpperCase(), startX + 8, startY + 8, { width: cardWidth - 16 });
+    doc.fillColor(PDF_COLORS.NAVY).fontSize(11).font("Helvetica-Bold").text(String(item.value), startX + 8, startY + 22, { width: cardWidth - 16 });
 
     startX += cardWidth + gap;
   });
 
-  doc.y = startY + cardHeight + 25;
+  doc.y = startY + cardHeight + 20;
 };
 
 const drawPdfTable = (doc, headers, rows) => {
   const startX = 48;
   const printableWidth = 500;
-  const columnWidth = printableWidth / headers.length;
-  const cellPaddingX = 8;
+
+  const getWeight = (key) => {
+    const k = String(key || "").toLowerCase();
+    if (k.includes("date")) return 70;
+    if (k.includes("amount") || k.includes("total") || k.includes("price") || k.includes("rate") || k.includes("debit") || k.includes("credit") || k.includes("balance") || k.includes("due") || k.includes("paid")) return 80;
+    if (k.includes("qty") || k.includes("count")) return 45;
+    if (k.includes("ref") || k.includes("invoice") || k.includes("hsn") || k.includes("mode") || k.includes("type")) return 80;
+    return 140;
+  };
+
+  const weights = headers.map(h => getWeight(h.key));
+  const totalWeight = weights.reduce((a, b) => a + b, 0);
+  const columnWidths = weights.map(w => Math.round((w / totalWeight) * printableWidth));
+
+  const cellPaddingX = 6;
   const lineHeight = 10;
   const headerRowHeight = 22;
   const bottomLimit = 740;
 
   const renderTableHeader = (y) => {
     doc.rect(startX, y, printableWidth, headerRowHeight).fill(PDF_COLORS.NAVY);
+    let currX = startX;
     headers.forEach((h, i) => {
-      doc.fillColor("#ffffff").fontSize(9).font("Helvetica-Bold")
-        .text(h.label, startX + (i * columnWidth) + cellPaddingX, y + 6, { width: columnWidth - 10 });
+      const w = columnWidths[i];
+      const align = /(amount|total|price|rate|debit|credit|balance|due|paid|qty|count)/i.test(h.key) ? "right" : "left";
+      doc.fillColor("#ffffff").fontSize(8.5).font("Helvetica-Bold")
+        .text(h.label, currX + cellPaddingX, y + 6, { width: w - 12, align });
+      currX += w;
     });
     return y + headerRowHeight;
   };
@@ -94,9 +114,9 @@ const drawPdfTable = (doc, headers, rows) => {
   const getRowHeight = (row) => {
     let lines = 1;
     headers.forEach((h, i) => {
-      const width = columnWidth - 10;
+      const w = columnWidths[i] - 12;
       doc.fontSize(8).font("Helvetica");
-      const wrapped = doc.heightOfString(String(row[h.key] ?? "-"), { width });
+      const wrapped = doc.heightOfString(String(row[h.key] ?? "-"), { width: w });
       const cellLines = Math.max(1, Math.ceil(wrapped / lineHeight));
       if (cellLines > lines) lines = cellLines;
     });
@@ -118,20 +138,25 @@ const drawPdfTable = (doc, headers, rows) => {
     }
 
     if (rowIndex % 2 === 1) {
-      doc.rect(startX, currentY, printableWidth, rowHeight).fill("#f9f9f9");
+      doc.rect(startX, currentY, printableWidth, rowHeight).fill("#f8fafc");
     }
 
+    let currX = startX;
     headers.forEach((h, colIndex) => {
+      const w = columnWidths[colIndex];
       const val = String(row[h.key] ?? "-");
+      const align = /(amount|total|price|rate|debit|credit|balance|due|paid|qty|count)/i.test(h.key) ? "right" : "left";
+
       doc.fillColor(PDF_COLORS.TEXT).fontSize(8).font("Helvetica")
-        .text(val, startX + (colIndex * columnWidth) + cellPaddingX, currentY + 6, { width: columnWidth - 10 });
+        .text(val, currX + cellPaddingX, currentY + 6, { width: w - 12, align });
+      currX += w;
     });
 
     doc.strokeColor(PDF_COLORS.GRAY).lineWidth(0.5).moveTo(startX, currentY + rowHeight).lineTo(startX + printableWidth, currentY + rowHeight).stroke();
     currentY += rowHeight;
   });
 
-  doc.y = currentY + 10;
+  doc.y = currentY + 15;
 };
 
 module.exports = {
