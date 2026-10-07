@@ -229,7 +229,34 @@ const buildReport = (scope, opts = {}) => {
         cgst: money(i.cgst_total),
         sgst: money(i.sgst_total),
         total: money(i.total_amount)
-      }))
+      })),
+      sections: [
+        {
+          title: "Related Bills",
+          headers: [
+            { key: "date", label: "Date" },
+            { key: "ref", label: "Invoice #" },
+            { key: "customer", label: "Customer" },
+            { key: "gstin", label: "Customer GST" },
+            { key: "type", label: "Type" },
+            { key: "taxable", label: "Taxable" },
+            { key: "cgst", label: "CGST" },
+            { key: "sgst", label: "SGST" },
+            { key: "total", label: "Total" }
+          ],
+          rows: all.map(i => ({
+            date: formatDateValue(i.created_at),
+            ref: i.bill_number || String(i.id).slice(-8).toUpperCase(),
+            customer: i.customer_name,
+            gstin: i.customer_gstin || "—",
+            type: i.type,
+            taxable: money(i.taxable_amount),
+            cgst: money(i.cgst_total),
+            sgst: money(i.sgst_total),
+            total: money(i.total_amount)
+          }))
+        }
+      ]
     };
   }
 
@@ -1023,7 +1050,7 @@ const createXlsxReport = (filename, title, summaryItems = [], tableHeaders = nul
       if (sections && Array.isArray(sections) && sections.length) {
         sections.forEach((sec, idx) => {
           if (!sec.headers || !sec.headers.length) return;
-          const ws = wb.addWorksheet(`Sheet ${idx + 1}`);
+          const ws = wb.addWorksheet(sec.title || `Sheet ${idx + 1}`);
           addTableSheet(ws, sec.headers, sec.rows || []);
           ws.columns = sec.headers.map(() => ({ width: 22 }));
         });
