@@ -264,31 +264,70 @@ const buildReport = (scope, opts = {}) => {
         {
           title: "Bill Live View",
           headers: [
-            { key: "date", label: "Date" },
-            { key: "ref", label: "Invoice #" },
-            { key: "customer", label: "Customer" },
-            { key: "item", label: "Item / Description" },
-            { key: "hsn", label: "HSN Code" },
-            { key: "qty", label: "Qty" },
-            { key: "rate", label: "Rate" },
-            { key: "taxable", label: "Taxable" },
-            { key: "cgst", label: "CGST" },
-            { key: "sgst", label: "SGST" },
-            { key: "total", label: "Total" }
+            { key: "col1", label: "Col1" },
+            { key: "col2", label: "Col2" },
+            { key: "col3", label: "Col3" },
+            { key: "col4", label: "Col4" },
+            { key: "col5", label: "Col5" },
+            { key: "col6", label: "Col6" },
+            { key: "col7", label: "Col7" },
+            { key: "col8", label: "Col8" },
+            { key: "col9", label: "Col9" }
           ],
-          rows: billItems.map(i => ({
-            date: formatDateValue(i.created_at),
-            ref: i.bill_number || "—",
-            customer: i.customer_name,
-            item: i.product_name,
-            hsn: i.hsn_code || "—",
-            qty: i.qty || 1,
-            rate: money(i.price),
-            taxable: money(i.taxable_amount),
-            cgst: money(i.cgst_amount),
-            sgst: money(i.sgst_amount),
-            total: money(i.total_amount)
-          }))
+          rows: (() => {
+            const billsMap = new Map();
+            billItems.forEach(i => {
+              const ref = i.bill_number || "—";
+              if (!billsMap.has(ref)) {
+                billsMap.set(ref, {
+                  ref,
+                  date: formatDateValue(i.created_at),
+                  customer: i.customer_name || "—",
+                  items: []
+                });
+              }
+              billsMap.get(ref).items.push(i);
+            });
+
+            const rows = [];
+            billsMap.forEach(bill => {
+              rows.push({
+                col1: `INVOICE: ${bill.ref}`,
+                col2: `Date: ${bill.date}`,
+                col3: `Customer: ${bill.customer}`,
+                col4: "", col5: "", col6: "", col7: "", col8: "", col9: ""
+              });
+              rows.push({
+                col1: "#", col2: "Item / Description", col3: "HSN Code", col4: "Qty", col5: "Rate", col6: "Taxable", col7: "CGST", col8: "SGST", col9: "Total"
+              });
+              let tTaxable = 0, tCgst = 0, tSgst = 0, tTotal = 0;
+              bill.items.forEach((it, idx) => {
+                const taxable = Number(it.taxable_amount) || (Number(it.price) * Number(it.qty)) || 0;
+                const cgst = Number(it.cgst_amount) || 0;
+                const sgst = Number(it.sgst_amount) || 0;
+                const total = Number(it.total_amount) || (taxable + cgst + sgst);
+                tTaxable += taxable; tCgst += cgst; tSgst += sgst; tTotal += total;
+
+                rows.push({
+                  col1: String(idx + 1),
+                  col2: String(it.product_name || "—"),
+                  col3: String(it.hsn_code || "—"),
+                  col4: String(it.qty || 1),
+                  col5: money(it.price),
+                  col6: money(taxable),
+                  col7: money(cgst),
+                  col8: money(sgst),
+                  col9: money(total)
+                });
+              });
+              rows.push({
+                col1: "", col2: "", col3: "", col4: "", col5: "INVOICE TOTAL:",
+                col6: money(tTaxable), col7: money(tCgst), col8: money(tSgst), col9: money(tTotal)
+              });
+              rows.push({ col1: "", col2: "", col3: "", col4: "", col5: "", col6: "", col7: "", col8: "", col9: "" });
+            });
+            return rows;
+          })()
         }
       ]
     };
@@ -1040,25 +1079,50 @@ const createXlsxReport = (filename, title, summaryItems = [], tableHeaders = nul
       const addTableSheet = (ws, headers, rows) => {
         if (!headers || !headers.length) return;
 
-        const headerRow = ws.addRow(headers.map(h => h.label));
-        headerRow.eachCell(cell => {
-          cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
-          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: NAVY } };
-          cell.alignment = { vertical: "middle" };
-        });
-        headerRow.height = 20;
+        const isBillLiveView = headers.some(h => h.key === "col1");
+
+        if (!isBillLiveView) {
+          const headerRow = ws.addRow(headers.map(h => h.label));
+          headerRow.eachCell(cell => {
+            cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+            cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: NAVY } };
+            cell.alignment = { vertical: "middle" };
+          });
+          headerRow.height = 20;
+        }
 
         (rows || []).forEach(r => {
+          const isInvoiceHeader = r.col1 && String(r.col1).startsWith("INVOICE:");
+          const isInvoiceTotal = r.col5 === "INVOICE TOTAL:";
+          const isItemHeader = r.col1 === "#";
+
           const row = ws.addRow(headers.map(h => {
             const v = r[h.key];
             return v != null ? String(v) : "";
           }));
+
           row.eachCell(cell => {
             cell.alignment = { vertical: "middle" };
-            const colIdx = cell.col;
-            const key = headers[colIdx - 1] ? headers[colIdx - 1].key : null;
-            const isAmount = key && /(amount|paid|due|balance|debit|credit|taxable|gst|cgst|sgst|igst|total|price|cost|value|profit|expense|collection|charge|income)/i.test(key);
-            if (isAmount) cell.font = { color: { argb: MONEY }, bold: true };
+            if (isInvoiceHeader) {
+              cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+              cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BLUE } };
+            } else if (isItemHeader) {
+              cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+              cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: NAVY } };
+            } else if (isInvoiceTotal) {
+              cell.font = { bold: true, color: { argb: NAVY } };
+              cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF3F4F6" } };
+            } else if (isBillLiveView && r.col1 && !isInvoiceHeader && !isInvoiceTotal && !isItemHeader) {
+              const colIdx = cell.col;
+              if (colIdx >= 6) {
+                cell.font = { color: { argb: MONEY }, bold: true };
+              }
+            } else {
+              const colIdx = cell.col;
+              const key = headers[colIdx - 1] ? headers[colIdx - 1].key : null;
+              const isAmount = key && /(amount|paid|due|balance|debit|credit|taxable|gst|cgst|sgst|igst|total|price|cost|value|profit|expense|collection|charge|income)/i.test(key);
+              if (isAmount) cell.font = { color: { argb: MONEY }, bold: true };
+            }
           });
         });
       };
