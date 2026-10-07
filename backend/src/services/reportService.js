@@ -194,8 +194,8 @@ const buildReport = (scope, opts = {}) => {
     const services = hasRange ? db.prepare(sSql).all(start, endEx) : db.prepare(sSql).all();
 
     const billItemsSql = hasRange
-      ? `SELECT o.bill_number, o.customer_name, o.created_at, oi.product_name, oi.price, oi.qty, oi.taxable_amount, oi.cgst_amount, oi.sgst_amount, (COALESCE(oi.taxable_amount, oi.price * oi.qty, 0) + COALESCE(oi.cgst_amount, 0) + COALESCE(oi.sgst_amount, 0)) AS total_amount FROM order_items oi JOIN product_orders o ON oi.order_id = o.id WHERE o.is_gst_bill = 1 AND o.status != 'Cancelled' AND o.created_at >= ? AND o.created_at < ?`
-      : `SELECT o.bill_number, o.customer_name, o.created_at, oi.product_name, oi.price, oi.qty, oi.taxable_amount, oi.cgst_amount, oi.sgst_amount, (COALESCE(oi.taxable_amount, oi.price * oi.qty, 0) + COALESCE(oi.cgst_amount, 0) + COALESCE(oi.sgst_amount, 0)) AS total_amount FROM order_items oi JOIN product_orders o ON oi.order_id = o.id WHERE o.is_gst_bill = 1 AND o.status != 'Cancelled'`;
+      ? `SELECT o.bill_number, o.customer_name, o.created_at, oi.product_name, oi.hsn_code, oi.price, oi.qty, oi.taxable_amount, oi.cgst_amount, oi.sgst_amount, (COALESCE(oi.taxable_amount, oi.price * oi.qty, 0) + COALESCE(oi.cgst_amount, 0) + COALESCE(oi.sgst_amount, 0)) AS total_amount FROM order_items oi JOIN product_orders o ON oi.order_id = o.id WHERE o.is_gst_bill = 1 AND o.status != 'Cancelled' AND o.created_at >= ? AND o.created_at < ?`
+      : `SELECT o.bill_number, o.customer_name, o.created_at, oi.product_name, oi.hsn_code, oi.price, oi.qty, oi.taxable_amount, oi.cgst_amount, oi.sgst_amount, (COALESCE(oi.taxable_amount, oi.price * oi.qty, 0) + COALESCE(oi.cgst_amount, 0) + COALESCE(oi.sgst_amount, 0)) AS total_amount FROM order_items oi JOIN product_orders o ON oi.order_id = o.id WHERE o.is_gst_bill = 1 AND o.status != 'Cancelled'`;
     const billItems = hasRange ? db.prepare(billItemsSql).all(start, endEx) : db.prepare(billItemsSql).all();
 
     const all = [...orders.map(o => ({ ...o, type: "Sale" })), ...services.map(s => ({ ...s, type: "Service" }))]
@@ -262,12 +262,13 @@ const buildReport = (scope, opts = {}) => {
           }))
         },
         {
-          title: "Bill Details",
+          title: "Bill Live View",
           headers: [
             { key: "date", label: "Date" },
             { key: "ref", label: "Invoice #" },
             { key: "customer", label: "Customer" },
             { key: "item", label: "Item / Description" },
+            { key: "hsn", label: "HSN Code" },
             { key: "qty", label: "Qty" },
             { key: "rate", label: "Rate" },
             { key: "taxable", label: "Taxable" },
@@ -280,6 +281,7 @@ const buildReport = (scope, opts = {}) => {
             ref: i.bill_number || "—",
             customer: i.customer_name,
             item: i.product_name,
+            hsn: i.hsn_code || "—",
             qty: i.qty || 1,
             rate: money(i.price),
             taxable: money(i.taxable_amount),
