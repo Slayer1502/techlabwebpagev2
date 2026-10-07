@@ -193,6 +193,11 @@ const buildReport = (scope, opts = {}) => {
       : `SELECT id, bill_number, customer_name, (SELECT gst_number FROM parties WHERE parties.mobile = service_requests.customer_mobile AND parties.gst_number IS NOT NULL AND parties.mobile IS NOT NULL LIMIT 1) AS customer_gstin, taxable_amount, cgst_total, sgst_total, bill_amount AS total_amount, COALESCE(bill_date, created_at) AS created_at, device_type FROM service_requests WHERE bill_status = 'billed' AND (cgst_total > 0 OR sgst_total > 0)`;
     const services = hasRange ? db.prepare(sSql).all(start, endEx) : db.prepare(sSql).all();
 
+    const billItemsSql = hasRange
+      ? `SELECT o.bill_number, o.customer_name, o.created_at, oi.product_name, oi.price, oi.qty, oi.taxable_amount, oi.cgst_amount, oi.sgst_amount, (COALESCE(oi.taxable_amount, oi.price * oi.qty, 0) + COALESCE(oi.cgst_amount, 0) + COALESCE(oi.sgst_amount, 0)) AS total_amount FROM order_items oi JOIN product_orders o ON oi.order_id = o.id WHERE o.is_gst_bill = 1 AND o.status != 'Cancelled' AND o.created_at >= ? AND o.created_at < ?`
+      : `SELECT o.bill_number, o.customer_name, o.created_at, oi.product_name, oi.price, oi.qty, oi.taxable_amount, oi.cgst_amount, oi.sgst_amount, (COALESCE(oi.taxable_amount, oi.price * oi.qty, 0) + COALESCE(oi.cgst_amount, 0) + COALESCE(oi.sgst_amount, 0)) AS total_amount FROM order_items oi JOIN product_orders o ON oi.order_id = o.id WHERE o.is_gst_bill = 1 AND o.status != 'Cancelled'`;
+    const billItems = hasRange ? db.prepare(billItemsSql).all(start, endEx) : db.prepare(billItemsSql).all();
+
     const all = [...orders.map(o => ({ ...o, type: "Sale" })), ...services.map(s => ({ ...s, type: "Service" }))]
       .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
     const tx = all.reduce((s, i) => s + (i.taxable_amount || 0), 0);
@@ -253,6 +258,33 @@ const buildReport = (scope, opts = {}) => {
             taxable: money(i.taxable_amount),
             cgst: money(i.cgst_total),
             sgst: money(i.sgst_total),
+            total: money(i.total_amount)
+          }))
+        },
+        {
+          title: "Bill Details",
+          headers: [
+            { key: "date", label: "Date" },
+            { key: "ref", label: "Invoice #" },
+            { key: "customer", label: "Customer" },
+            { key: "item", label: "Item / Description" },
+            { key: "qty", label: "Qty" },
+            { key: "rate", label: "Rate" },
+            { key: "taxable", label: "Taxable" },
+            { key: "cgst", label: "CGST" },
+            { key: "sgst", label: "SGST" },
+            { key: "total", label: "Total" }
+          ],
+          rows: billItems.map(i => ({
+            date: formatDateValue(i.created_at),
+            ref: i.bill_number || "—",
+            customer: i.customer_name,
+            item: i.product_name,
+            qty: i.qty || 1,
+            rate: money(i.price),
+            taxable: money(i.taxable_amount),
+            cgst: money(i.cgst_amount),
+            sgst: money(i.sgst_amount),
             total: money(i.total_amount)
           }))
         }
