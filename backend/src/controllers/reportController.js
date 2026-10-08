@@ -69,7 +69,8 @@ const getReport = async (req, res) => {
           report.tableHeaders,
           report.tableRows,
           subdir,
-          report.sections
+          report.sections,
+          report.hsnSummary
         );
 
     const actor = userService.getUserById(req.user.id);

@@ -203,6 +203,12 @@ const buildReport = (scope, opts = {}) => {
     const tx = all.reduce((s, i) => s + (i.taxable_amount || 0), 0);
     const cg = all.reduce((s, i) => s + (i.cgst_total || 0), 0);
     const sg = all.reduce((s, i) => s + (i.sgst_total || 0), 0);
+
+    const hsnSql = hasRange
+      ? `SELECT COALESCE(oi.hsn_code, '9988') AS hsn, SUM(COALESCE(oi.qty, 1)) AS total_qty, SUM(COALESCE(oi.taxable_amount, oi.price * oi.qty, 0)) AS taxable, SUM(COALESCE(oi.cgst_amount, 0)) AS cgst, SUM(COALESCE(oi.sgst_amount, 0)) AS sgst FROM order_items oi JOIN product_orders o ON oi.order_id = o.id WHERE o.is_gst_bill = 1 AND o.status != 'Cancelled' AND o.created_at >= ? AND o.created_at < ? GROUP BY hsn`
+      : `SELECT COALESCE(oi.hsn_code, '9988') AS hsn, SUM(COALESCE(oi.qty, 1)) AS total_qty, SUM(COALESCE(oi.taxable_amount, oi.price * oi.qty, 0)) AS taxable, SUM(COALESCE(oi.cgst_amount, 0)) AS cgst, SUM(COALESCE(oi.sgst_amount, 0)) AS sgst FROM order_items oi JOIN product_orders o ON oi.order_id = o.id WHERE o.is_gst_bill = 1 AND o.status != 'Cancelled' GROUP BY hsn`;
+    const hsnSummaryRows = hasRange ? db.prepare(hsnSql).all(start, endEx) : db.prepare(hsnSql).all();
+
     return {
       filenameBase: `gst-summary-${start}-to-${end}`,
       title: "GST Tax Summary",
@@ -213,6 +219,7 @@ const buildReport = (scope, opts = {}) => {
         { label: "SGST (9%)", value: money(sg) },
         { label: "Total Tax", value: money(cg + sg) }
       ],
+      hsnSummary: hsnSummaryRows,
       tableHeaders: [
         { key: "date", label: "Date" },
         { key: "ref", label: "Invoice #" },
@@ -1068,7 +1075,7 @@ const createPdfReport = (filename, title, summaryItems, tableHeaders, tableRows,
   });
 };
 
-const createXlsxReport = (filename, title, summaryItems = [], tableHeaders = null, tableRows = [], saveSubdir = null, sections = null) => {
+const createXlsxReport = (filename, title, summaryItems = [], tableHeaders = null, tableRows = [], saveSubdir = null, sections = null, hsnSummary = null) => {
   return new Promise((resolve, reject) => {
     try {
       const wb = new XLSX.Workbook();
@@ -1138,11 +1145,50 @@ const createXlsxReport = (filename, title, summaryItems = [], tableHeaders = nul
           cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
           cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BLUE } };
         });
-        summaryItems.forEach(s => {
-          const r = wsSummary.addRow([s.label, s.value]);
+        summaryItems.forEach((s, idx) => {
+          const r = wsSummary.getRow(4 + idx);
+          r.getCell(1).value = s.label;
+          r.getCell(2).value = s.value;
           r.eachCell(cell => { cell.alignment = { vertical: "middle" }; });
         });
-        wsSummary.columns = [{ width: 30 }, { width: 40 }];
+
+        if (hsnSummary && hsnSummary.length) {
+          wsSummary.getCell("D3").value = "HSN Summary (Auditor View)";
+          wsSummary.getCell("D3").font = { bold: true, color: { argb: NAVY }, size: 12 };
+
+          const hsnHeaders = ["HSN Code", "Total Qty", "Taxable Value", "CGST", "SGST", "Total Tax"];
+          const hsnHeaderRow = wsSummary.getRow(4);
+          hsnHeaders.forEach((h, idx) => {
+            const cell = hsnHeaderRow.getCell(4 + idx);
+            cell.value = h;
+            cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+            cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: NAVY } };
+            cell.alignment = { vertical: "middle", horizontal: "center" };
+          });
+          hsnHeaderRow.height = 20;
+
+          hsnSummary.forEach((hsn, idx) => {
+            const rIdx = 5 + idx;
+            const r = wsSummary.getRow(rIdx);
+            r.getCell(4).value = hsn.hsn || "—";
+            r.getCell(5).value = hsn.total_qty || 0;
+            r.getCell(6).value = money(hsn.taxable);
+            r.getCell(7).value = money(hsn.cgst);
+            r.getCell(8).value = money(hsn.sgst);
+            r.getCell(9).value = money((hsn.cgst || 0) + (hsn.sgst || 0));
+            r.eachCell((cell, colNum) => {
+              if (colNum >= 4 && colNum <= 9) {
+                cell.alignment = { vertical: "middle" };
+                if (colNum >= 6) cell.font = { color: { argb: MONEY }, bold: true };
+              }
+            });
+          });
+        }
+
+        wsSummary.columns = [
+          { width: 28 }, { width: 32 }, { width: 6 },
+          { width: 15 }, { width: 12 }, { width: 18 }, { width: 15 }, { width: 15 }, { width: 18 }
+        ];
       }
 
       if (sections && Array.isArray(sections) && sections.length) {
