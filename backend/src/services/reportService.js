@@ -51,6 +51,8 @@ const nextDay = (d) => {
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
 };
 
+const money = (n) => formatCurrencyValue(n);
+
 const buildReport = (scope, opts = {}) => {
   const start = String(opts.start || "").slice(0, 10);
   const end = String(opts.end || "").slice(0, 10);
@@ -58,7 +60,6 @@ const buildReport = (scope, opts = {}) => {
   const hasRange = !!(start && end);
   const label = hasRange ? `${start}  to  ${end}` : "All records";
   const live = "Live";
-  const money = (n) => formatCurrencyValue(n);
 
   if (scope === "sales_register") {
     let sql = `
