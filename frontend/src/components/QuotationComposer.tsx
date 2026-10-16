@@ -36,6 +36,7 @@ export interface QuoteLine {
   quantity: number;
   sqId: string;
   sqNumber: string;
+  optionTier: string;
 }
 
 export interface QuoteContextEnquiry {
@@ -79,7 +80,8 @@ const normalizeLine = (o: any): QuoteLine => ({
   quotedPrice: Number(o?.quotedPrice ?? o?.unit_price) || 0,
   quantity: Number(o?.quantity) || 1,
   sqId: o?.sqId || o?.sq_id || '',
-  sqNumber: o?.sqNumber || o?.sq_number || ''
+  sqNumber: o?.sqNumber || o?.sq_number || '',
+  optionTier: String(o?.optionTier ?? o?.option_tier ?? 'Option 1').trim() || 'Option 1'
 });
 
 const isEnquiryContext = (c: QuoteContext): c is QuoteContextEnquiry => c.type === 'enquiry';
@@ -154,7 +156,8 @@ const QuotationComposer = ({ context, initialValidUntil = '', onClose, onSuccess
         quotedPrice: Number(p.finalPrice) || 0,
         quantity: 1,
         sqId: '',
-        sqNumber: ''
+        sqNumber: '',
+        optionTier: 'Option 1'
       }
     ]);
     setSearch('');
@@ -163,7 +166,7 @@ const QuotationComposer = ({ context, initialValidUntil = '', onClose, onSuccess
   const addGenericLine = () => {
     setLines(items => [
       ...items,
-      { productId: '', name: '', source: 'inventory', supplierId: '', supplierName: '', costPrice: 0, quotedPrice: 0, quantity: 1, sqId: '', sqNumber: '' }
+      { productId: '', name: '', source: 'inventory', supplierId: '', supplierName: '', costPrice: 0, quotedPrice: 0, quantity: 1, sqId: '', sqNumber: '', optionTier: 'Option 1' }
     ]);
   };
 
@@ -171,7 +174,7 @@ const QuotationComposer = ({ context, initialValidUntil = '', onClose, onSuccess
     if (!name.trim()) return;
     setLines(items => [
       ...items,
-      { productId: '', name: name.trim(), source: 'inventory', supplierId: '', supplierName: '', costPrice: 0, quotedPrice: 0, quantity: 1, sqId: '', sqNumber: '' }
+      { productId: '', name: name.trim(), source: 'inventory', supplierId: '', supplierName: '', costPrice: 0, quotedPrice: 0, quantity: 1, sqId: '', sqNumber: '', optionTier: 'Option 1' }
     ]);
   };
 
@@ -232,7 +235,8 @@ const QuotationComposer = ({ context, initialValidUntil = '', onClose, onSuccess
       source: l.source,
       supplierId: l.supplierId || null,
       sqId: l.sqId || null,
-      sqNumber: l.sqNumber || null
+      sqNumber: l.sqNumber || null,
+      optionTier: l.optionTier || 'Option 1'
     }));
 
   const toQuoteOptions = (ls: QuoteLine[]) =>
@@ -247,7 +251,8 @@ const QuotationComposer = ({ context, initialValidUntil = '', onClose, onSuccess
       quantity: l.quantity,
       sqId: l.sqId || null,
       sqNumber: l.sqNumber || null,
-      costSource: l.sqId ? 'sq' : 'manual'
+      costSource: l.sqId ? 'sq' : 'manual',
+      optionTier: l.optionTier || 'Option 1'
     }));
 
   const handleSave = async () => {
@@ -429,6 +434,16 @@ const QuotationComposer = ({ context, initialValidUntil = '', onClose, onSuccess
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      className="px-3 py-1 bg-white border-2 border-gray-200 rounded-xl text-xs font-bold text-purple-600 outline-none focus:border-blue/40 transition-all"
+                      value={l.optionTier || 'Option 1'}
+                      onChange={e => setLine(idx, { optionTier: e.target.value })}
+                    >
+                      <option value="Option 1">Option 1 (Standard)</option>
+                      <option value="Option 2">Option 2 (Alternative)</option>
+                      <option value="Option 3">Option 3 (Premium)</option>
+                    </select>
+
                     <div className="flex bg-white rounded-xl p-0.5 border-2 border-gray-200">
                       <button
                         onClick={() => setLine(idx, { source: 'inventory', supplierId: '', supplierName: '', sqId: '', sqNumber: '' })}

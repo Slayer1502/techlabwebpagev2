@@ -825,6 +825,9 @@ const initializeDatabase = () => {
   if (!sqiColsNow.includes("sq_number")) {
     db.exec("ALTER TABLE sales_quotation_items ADD COLUMN sq_number TEXT");
   }
+  if (!sqiColsNow.includes("option_tier")) {
+    db.exec("ALTER TABLE sales_quotation_items ADD COLUMN option_tier TEXT DEFAULT 'Option 1'");
+  }
 
   const recColsNow = db.prepare("PRAGMA table_info(recurring_schedules)").all().map(c => c.name);
   if (!recColsNow.includes("amount")) {
