@@ -97,6 +97,7 @@ const QuotationComposer = ({ context, initialValidUntil = '', onClose, onSuccess
     initialLines && initialLines.length ? initialLines.map(normalizeLine) : []
   );
   const [search, setSearch] = useState('');
+  const [activeOptionTab, setActiveOptionTab] = useState<'All' | 'Option 1' | 'Option 2' | 'Option 3'>('All');
   const [notes, setNotes] = useState('');
   const [validUntil, setValidUntil] = useState(initialValidUntil || '');
   const [saving, setSaving] = useState(false);
@@ -144,6 +145,7 @@ const QuotationComposer = ({ context, initialValidUntil = '', onClose, onSuccess
   };
 
   const addProduct = (p: Product) => {
+    const tier = activeOptionTab === 'All' ? 'Option 1' : activeOptionTab;
     setLines(items => [
       ...items,
       {
@@ -157,24 +159,26 @@ const QuotationComposer = ({ context, initialValidUntil = '', onClose, onSuccess
         quantity: 1,
         sqId: '',
         sqNumber: '',
-        optionTier: 'Option 1'
+        optionTier: tier
       }
     ]);
     setSearch('');
   };
 
   const addGenericLine = () => {
+    const tier = activeOptionTab === 'All' ? 'Option 1' : activeOptionTab;
     setLines(items => [
       ...items,
-      { productId: '', name: '', source: 'inventory', supplierId: '', supplierName: '', costPrice: 0, quotedPrice: 0, quantity: 1, sqId: '', sqNumber: '', optionTier: 'Option 1' }
+      { productId: '', name: '', source: 'inventory', supplierId: '', supplierName: '', costPrice: 0, quotedPrice: 0, quantity: 1, sqId: '', sqNumber: '', optionTier: tier }
     ]);
   };
 
   const addServiceChargeItem = (name: string) => {
     if (!name.trim()) return;
+    const tier = activeOptionTab === 'All' ? 'Option 1' : activeOptionTab;
     setLines(items => [
       ...items,
-      { productId: '', name: name.trim(), source: 'inventory', supplierId: '', supplierName: '', costPrice: 0, quotedPrice: 0, quantity: 1, sqId: '', sqNumber: '', optionTier: 'Option 1' }
+      { productId: '', name: name.trim(), source: 'inventory', supplierId: '', supplierName: '', costPrice: 0, quotedPrice: 0, quantity: 1, sqId: '', sqNumber: '', optionTier: tier }
     ]);
   };
 
@@ -341,7 +345,23 @@ const QuotationComposer = ({ context, initialValidUntil = '', onClose, onSuccess
 
         <div className="flex flex-col lg:flex-row gap-6 p-8 overflow-y-auto flex-1">
           <div className="flex-1 min-w-0 flex flex-col gap-5">
-            <MarginEngineBar items={lines.map(l => ({ name: l.name, quantity: l.quantity, costPrice: l.costPrice, quotedPrice: l.quotedPrice }))} />
+            <MarginEngineBar items={lines.filter(l => activeOptionTab === 'All' || l.optionTier === activeOptionTab).map(l => ({ name: l.name, quantity: l.quantity, costPrice: l.costPrice, quotedPrice: l.quotedPrice }))} />
+
+            <div className="flex bg-gray-100 p-1.5 rounded-2xl gap-1">
+              {['All', 'Option 1', 'Option 2', 'Option 3'].map(tab => (
+                 <button
+                   key={tab}
+                   type="button"
+                   onClick={() => setActiveOptionTab(tab as any)}
+                   className={`flex-1 py-2 text-xs font-black rounded-xl transition-all ${
+                     activeOptionTab === tab ? 'bg-navy text-white shadow-md' : 'text-text-soft hover:bg-gray-200'
+                   }`}
+                 >
+                    {tab} {tab !== 'All' ? `(${lines.filter(l => l.optionTier === tab).length})` : `(${lines.length})`}
+                 </button>
+              ))}
+            </div>
+
             <div className="relative">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-text-soft" />
               <input
@@ -417,7 +437,9 @@ const QuotationComposer = ({ context, initialValidUntil = '', onClose, onSuccess
             </div>
 
             <div className="space-y-3">
-              {lines.map((l, idx) => (
+              {lines.map((l, idx) => {
+                if (activeOptionTab !== 'All' && l.optionTier !== activeOptionTab) return null;
+                return (
                 <div key={idx} className="bg-gray-50 p-4 rounded-2xl border border-gray-100 space-y-3">
                   <div className="flex items-center gap-3">
                     <div className="flex-1 min-w-0">
@@ -541,7 +563,8 @@ const QuotationComposer = ({ context, initialValidUntil = '', onClose, onSuccess
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
 
               {lines.length === 0 && (
                 <div className="h-40 flex flex-col items-center justify-center text-center opacity-20">
