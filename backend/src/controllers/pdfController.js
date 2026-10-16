@@ -74,7 +74,8 @@ const getChallanPdf = async (req, res) => {
 
 const getQuotationPdf = async (req, res) => {
   try {
-    const doc = await pdfService.generateQuotationPdf(req.params.id);
+    const optionTier = req.query.option || req.query.optionTier || null;
+    const doc = await pdfService.generateQuotationPdf(req.params.id, optionTier);
     const chunks = [];
     doc.on("data", chunk => chunks.push(chunk));
     doc.on("end", () => {

@@ -33,6 +33,8 @@ const QuotationPage = () => {
   const [editingQuote, setEditingQuote] = useState<Quotation | null>(null);
   const [viewingQuote, setViewingQuote] = useState<Quotation | null>(null);
   const [generatingDc, setGeneratingDc] = useState(false);
+  const [selectedQuoteForOption, setSelectedQuoteForOption] = useState<Quotation | null>(null);
+  const [optionModalType, setOptionModalType] = useState<'pdf' | 'excel' | null>(null);
   const queryClient = useQueryClient();
 
   const handleGenerateDc = async () => {
@@ -360,16 +362,16 @@ const QuotationPage = () => {
                                          <MessageSquare className="h-4 w-4" />
                                       </button>
                                       <button
-                                        onClick={() => window.open(`/api/sales/quotations/${q.id}/excel`, '_blank')}
+                                        onClick={() => { setSelectedQuoteForOption(q); setOptionModalType('excel'); }}
                                         className="p-2 text-emerald-600 bg-emerald-50 rounded-xl hover:bg-emerald-600 hover:text-white transition-all shadow-sm"
                                         title="Download Excel (.xlsx)"
                                       >
                                          <FileSpreadsheet className="h-4 w-4" />
                                       </button>
                                       <button
-                                        onClick={() => printQuotation(q)}
+                                        onClick={() => { setSelectedQuoteForOption(q); setOptionModalType('pdf'); }}
                                         className="p-2 text-blue bg-blue/5 rounded-xl hover:bg-blue hover:text-white transition-all shadow-sm"
-                                        title="Print"
+                                        title="Print / PDF"
                                       >
                                          <Printer className="h-4 w-4" />
                                       </button>
@@ -409,6 +411,58 @@ const QuotationPage = () => {
                 onSuccess={() => queryClient.invalidateQueries({ queryKey: ['quotations'] })}
               />
            </div>
+        )}
+
+        {selectedQuoteForOption && optionModalType && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-navy/50 backdrop-blur-sm">
+             <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl p-6 space-y-4">
+                <h3 className="text-lg font-bold text-navy">Select Proposal Option</h3>
+                <p className="text-xs text-text-soft">Choose which tier option you want to export/print for {selectedQuoteForOption.quote_number}:</p>
+
+                <div className="space-y-2 pt-2">
+                   {['Option 1', 'Option 2', 'Option 3'].map(opt => (
+                      <button
+                        key={opt}
+                        onClick={() => {
+                          const query = `?option=${encodeURIComponent(opt)}`;
+                          if (optionModalType === 'pdf') {
+                            window.open(`/api/sales/quotations/${selectedQuoteForOption.id}/pdf${query}`, '_blank');
+                          } else {
+                            window.open(`/api/sales/quotations/${selectedQuoteForOption.id}/excel${query}`, '_blank');
+                          }
+                          setSelectedQuoteForOption(null);
+                          setOptionModalType(null);
+                        }}
+                        className="w-full text-left px-4 py-3 bg-gray-50 hover:bg-blue/5 border-2 border-gray-100 hover:border-blue/30 rounded-2xl font-bold text-navy text-sm transition-all flex justify-between items-center"
+                      >
+                         <span>{opt} Package</span>
+                         <ChevronRight className="h-4 w-4 text-blue" />
+                      </button>
+                   ))}
+                   <button
+                     onClick={() => {
+                       if (optionModalType === 'pdf') {
+                         window.open(`/api/sales/quotations/${selectedQuoteForOption.id}/pdf`, '_blank');
+                       } else {
+                         window.open(`/api/sales/quotations/${selectedQuoteForOption.id}/excel`, '_blank');
+                       }
+                       setSelectedQuoteForOption(null);
+                       setOptionModalType(null);
+                     }}
+                     className="w-full text-center px-4 py-3 bg-navy text-white rounded-2xl font-bold text-xs uppercase tracking-wider hover:bg-blue transition-all"
+                   >
+                      Print All Options Combined
+                   </button>
+                </div>
+
+                <button
+                  onClick={() => { setSelectedQuoteForOption(null); setOptionModalType(null); }}
+                  className="w-full text-center py-2 text-xs font-bold text-text-soft"
+                >
+                   Cancel
+                </button>
+             </div>
+          </div>
         )}
       </div>
     </Layout>

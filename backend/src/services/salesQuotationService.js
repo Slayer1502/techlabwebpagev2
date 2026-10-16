@@ -292,10 +292,17 @@ const upsertQuotationFromEnquiry = (enquiry, options, actorName, validUntil) => 
 
 const XLSX = require("exceljs");
 
-const exportQuotationXlsx = async (id) => {
-  const data = getQuotationById(id);
-  if (!data) throw new Error("Quotation not found");
-  const { quotation, items } = data;
+const exportQuotationXlsx = async (id, optionTier = null) => {
+  const quotation = db.prepare("SELECT * FROM sales_quotations WHERE id = ?").get(id);
+  if (!quotation) throw new Error("Quotation not found");
+
+  const optionFilter = optionTier ? "AND option_tier = ?" : "";
+  const query = `SELECT * FROM sales_quotation_items WHERE quote_id = ? ${optionFilter} ORDER BY rowid`;
+  const items = optionTier ? db.prepare(query).all(id, optionTier) : db.prepare(query).all(id);
+
+  const filteredTotal = items.reduce((s, it) => s + (Number(it.unit_price) * Number(it.quantity)), 0);
+  const displayTotal = optionTier ? filteredTotal : quotation.total_amount;
+  const quoteTitle = "SALES QUOTATION" + (optionTier ? ` (${optionTier.toUpperCase()})` : "");
 
   const wb = new XLSX.Workbook();
   const ws = wb.addWorksheet("Quotation");
@@ -303,7 +310,7 @@ const exportQuotationXlsx = async (id) => {
   const BLUE = "FF2563EB";
   const MONEY = "FF059669";
 
-  ws.getCell("A1").value = "SALES QUOTATION";
+  ws.getCell("A1").value = quoteTitle;
   ws.getCell("A1").font = { bold: true, size: 18, color: { argb: NAVY } };
 
   ws.getCell("A3").value = "Quote Number:"; ws.getCell("B3").value = quotation.quote_number;
@@ -348,7 +355,7 @@ const exportQuotationXlsx = async (id) => {
   const totalRow = ws.getRow(rIdx + 1);
   totalRow.getCell(5).value = "GRAND TOTAL:";
   totalRow.getCell(5).font = { bold: true, color: { argb: NAVY } };
-  totalRow.getCell(6).value = quotation.total_amount;
+  totalRow.getCell(6).value = displayTotal;
   totalRow.getCell(6).numFmt = '"Rs. "#,##0';
   totalRow.getCell(6).font = { bold: true, color: { argb: MONEY }, size: 12 };
 

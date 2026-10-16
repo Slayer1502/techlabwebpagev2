@@ -695,10 +695,16 @@ const generateChallanPdf = async (challanId) => {
   return doc;
 };
 
-const generateQuotationPdf = async (quotationId) => {
+const generateQuotationPdf = async (quotationId, optionTier = null) => {
   const quotation = db.prepare("SELECT * FROM sales_quotations WHERE id = ?").get(quotationId);
   if (!quotation) throw new Error("Quotation not found");
-  const items = db.prepare("SELECT product_name, quantity, unit_price FROM sales_quotation_items WHERE quote_id = ? ORDER BY rowid").all(quotationId);
+
+  const optionFilter = optionTier ? "AND option_tier = ?" : "";
+  const query = `SELECT product_name, quantity, unit_price, option_tier FROM sales_quotation_items WHERE quote_id = ? ${optionFilter} ORDER BY rowid`;
+  const items = optionTier ? db.prepare(query).all(quotationId, optionTier) : db.prepare(query).all(quotationId);
+
+  const filteredTotal = items.reduce((s, it) => s + (Number(it.unit_price) * Number(it.quantity)), 0);
+  const displayTotal = optionTier ? filteredTotal : quotation.total_amount;
 
   const settings = getBusinessSettingsMap();
   const bizName = settings.business_name || 'TECHLAB';
@@ -722,7 +728,8 @@ const generateQuotationPdf = async (quotationId) => {
   doc.text(`Ph: ${bizPhone} | Email: ${bizEmail}`, 48, 99);
   if (bizGstin) doc.fillColor(PDF_COLORS.TEXT).fontSize(9).font("Helvetica-Bold").text(`GSTIN: ${bizGstin}`, 48, 111);
 
-  doc.fillColor(PDF_COLORS.BLUE).fontSize(16).font("Helvetica-Bold").text("QUOTATION", 48, 50, { align: "right" });
+  const quoteTitle = "QUOTATION" + (optionTier ? ` (${optionTier.toUpperCase()})` : "");
+  doc.fillColor(PDF_COLORS.BLUE).fontSize(16).font("Helvetica-Bold").text(quoteTitle, 48, 50, { align: "right" });
   doc.fillColor(PDF_COLORS.TEXT).fontSize(10).font("Helvetica").text(`Quotation No: ${quotation.quote_number}`, 48, 75, { align: "right" });
   doc.text(`Date: ${formatDateValue(quotation.quote_date)}`, 48, 87, { align: "right" });
   if (quotation.valid_until) doc.text(`Valid until: ${formatDateValue(quotation.valid_until)}`, 48, 99, { align: "right" });
@@ -810,7 +817,7 @@ const generateQuotationPdf = async (quotationId) => {
 
   doc.rect(48, itemY, 500, 20).fill(PDF_COLORS.LIGHT_GRAY);
   doc.fillColor(PDF_COLORS.NAVY).fontSize(10).font("Helvetica-Bold").text("TOTAL", 58, itemY + 6);
-  doc.text(formatCurrencyValue(quotation.total_amount).replace("Rs. ", ""), 465, itemY + 6, { width: 72, align: "right" });
+  doc.text(formatCurrencyValue(displayTotal).replace("Rs. ", ""), 465, itemY + 6, { width: 72, align: "right" });
   itemY += 30;
 
   doc.y = itemY;
