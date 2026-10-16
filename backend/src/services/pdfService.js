@@ -701,7 +701,10 @@ const generateQuotationPdf = async (quotationId, optionTier = null) => {
 
   const optionFilter = optionTier ? "AND option_tier = ?" : "";
   const query = `SELECT product_name, quantity, unit_price, option_tier FROM sales_quotation_items WHERE quote_id = ? ${optionFilter} ORDER BY rowid`;
-  const items = optionTier ? db.prepare(query).all(quotationId, optionTier) : db.prepare(query).all(quotationId);
+  let items = optionTier ? db.prepare(query).all(quotationId, optionTier) : db.prepare(query).all(quotationId);
+  if (optionTier && items.length === 0) {
+    items = db.prepare("SELECT product_name, quantity, unit_price, option_tier FROM sales_quotation_items WHERE quote_id = ? ORDER BY rowid").all(quotationId);
+  }
 
   const filteredTotal = items.reduce((s, it) => s + (Number(it.unit_price) * Number(it.quantity)), 0);
   const displayTotal = optionTier ? filteredTotal : quotation.total_amount;

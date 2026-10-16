@@ -298,7 +298,10 @@ const exportQuotationXlsx = async (id, optionTier = null) => {
 
   const optionFilter = optionTier ? "AND option_tier = ?" : "";
   const query = `SELECT * FROM sales_quotation_items WHERE quote_id = ? ${optionFilter} ORDER BY rowid`;
-  const items = optionTier ? db.prepare(query).all(id, optionTier) : db.prepare(query).all(id);
+  let items = optionTier ? db.prepare(query).all(id, optionTier) : db.prepare(query).all(id);
+  if (optionTier && items.length === 0) {
+    items = db.prepare("SELECT * FROM sales_quotation_items WHERE quote_id = ? ORDER BY rowid").all(id);
+  }
 
   const filteredTotal = items.reduce((s, it) => s + (Number(it.unit_price) * Number(it.quantity)), 0);
   const displayTotal = optionTier ? filteredTotal : quotation.total_amount;
