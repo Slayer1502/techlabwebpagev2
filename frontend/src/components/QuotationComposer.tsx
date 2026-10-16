@@ -13,7 +13,9 @@ import {
   FileText,
   AlertTriangle,
   User,
-  Calendar
+  Calendar,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../utils/api';
@@ -142,6 +144,28 @@ const QuotationComposer = ({ context, initialValidUntil = '', onClose, onSuccess
 
   const setLine = (idx: number, patch: Partial<QuoteLine>) => {
     setLines(items => items.map((l, i) => i === idx ? { ...l, ...patch } : l));
+  };
+
+  const moveLineUp = (idx: number) => {
+    if (idx <= 0) return;
+    setLines(items => {
+      const copy = [...items];
+      const temp = copy[idx];
+      copy[idx] = copy[idx - 1];
+      copy[idx - 1] = temp;
+      return copy;
+    });
+  };
+
+  const moveLineDown = (idx: number) => {
+    setLines(items => {
+      if (idx >= items.length - 1) return items;
+      const copy = [...items];
+      const temp = copy[idx];
+      copy[idx] = copy[idx + 1];
+      copy[idx + 1] = temp;
+      return copy;
+    });
   };
 
   const addProduct = (p: Product) => {
@@ -450,9 +474,34 @@ const QuotationComposer = ({ context, initialValidUntil = '', onClose, onSuccess
                         onChange={e => setLine(idx, { name: e.target.value })}
                       />
                     </div>
-                    <button onClick={() => setLines(items => items.filter((_, i) => i !== idx))} className="text-gray-300 hover:text-red-500">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => moveLineUp(idx)}
+                        disabled={idx === 0}
+                        className="p-1.5 bg-gray-100 hover:bg-blue hover:text-white rounded-lg text-navy transition-colors disabled:opacity-30"
+                        title="Move Up"
+                      >
+                        <ArrowUp className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveLineDown(idx)}
+                        disabled={idx === lines.length - 1}
+                        className="p-1.5 bg-gray-100 hover:bg-blue hover:text-white rounded-lg text-navy transition-colors disabled:opacity-30"
+                        title="Move Down"
+                      >
+                        <ArrowDown className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLines(items => items.filter((_, i) => i !== idx))}
+                        className="p-1.5 bg-red-50 hover:bg-red-500 hover:text-white rounded-lg text-red-500 transition-colors"
+                        title="Delete"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
