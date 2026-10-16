@@ -289,6 +289,77 @@ const upsertQuotationFromEnquiry = (enquiry, options, actorName, validUntil) => 
   return transaction();
 };
 
+const XLSX = require("exceljs");
+
+const exportQuotationXlsx = async (id) => {
+  const data = getQuotationById(id);
+  if (!data) throw new Error("Quotation not found");
+  const { quotation, items } = data;
+
+  const wb = new XLSX.Workbook();
+  const ws = wb.addWorksheet("Quotation");
+  const NAVY = "FF1B2A5B";
+  const BLUE = "FF2563EB";
+  const MONEY = "FF059669";
+
+  ws.getCell("A1").value = "SALES QUOTATION";
+  ws.getCell("A1").font = { bold: true, size: 18, color: { argb: NAVY } };
+
+  ws.getCell("A3").value = "Quote Number:"; ws.getCell("B3").value = quotation.quote_number;
+  ws.getCell("A4").value = "Quote Date:"; ws.getCell("B4").value = quotation.quote_date;
+  ws.getCell("A5").value = "Valid Until:"; ws.getCell("B5").value = quotation.valid_until || "—";
+
+  ws.getCell("D3").value = "Customer:"; ws.getCell("E3").value = quotation.customer_name;
+  ws.getCell("D4").value = "Mobile:"; ws.getCell("E4").value = quotation.customer_mobile || "—";
+  ws.getCell("D5").value = "Address:"; ws.getCell("E5").value = quotation.customer_address || "—";
+
+  const headers = ["#", "Item / Description", "Source", "Qty", "Rate", "Amount"];
+  const headerRow = ws.getRow(7);
+  headers.forEach((h, idx) => {
+    const cell = headerRow.getCell(idx + 1);
+    cell.value = h;
+    cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: NAVY } };
+    cell.alignment = { vertical: "middle", horizontal: idx >= 3 ? "right" : "left" };
+  });
+  headerRow.height = 20;
+
+  let rIdx = 8;
+  items.forEach((it, idx) => {
+    const row = ws.getRow(rIdx++);
+    const lineTotal = (Number(it.unit_price) || 0) * (Number(it.quantity) || 1);
+    row.getCell(1).value = idx + 1;
+    row.getCell(2).value = it.product_name;
+    row.getCell(3).value = it.source || "inventory";
+    row.getCell(4).value = it.quantity;
+    row.getCell(5).value = Number(it.unit_price) || 0;
+    row.getCell(6).value = lineTotal;
+
+    row.eachCell((cell, colNum) => {
+      cell.alignment = { vertical: "middle", horizontal: colNum >= 4 ? "right" : "left" };
+      if (colNum === 6 || colNum === 5) {
+        cell.numFmt = '"Rs. "#,##0';
+        cell.font = { color: { argb: MONEY }, bold: true };
+      }
+    });
+  });
+
+  const totalRow = ws.getRow(rIdx + 1);
+  totalRow.getCell(5).value = "GRAND TOTAL:";
+  totalRow.getCell(5).font = { bold: true, color: { argb: NAVY } };
+  totalRow.getCell(6).value = quotation.total_amount;
+  totalRow.getCell(6).numFmt = '"Rs. "#,##0';
+  totalRow.getCell(6).font = { bold: true, color: { argb: MONEY }, size: 12 };
+
+  ws.columns = [
+    { width: 6 }, { width: 35 }, { width: 15 },
+    { width: 10 }, { width: 15 }, { width: 18 }
+  ];
+
+  const buffer = await wb.xlsx.writeBuffer();
+  return { buffer: Buffer.from(buffer), filename: `${quotation.quote_number || id}.xlsx` };
+};
+
 module.exports = {
   getQuotations,
   getQuotationById,
@@ -298,5 +369,6 @@ module.exports = {
   updateQuotation,
   convertQuotation,
   deleteQuotation,
-  upsertQuotationFromEnquiry
+  upsertQuotationFromEnquiry,
+  exportQuotationXlsx
 };

@@ -53,11 +53,23 @@ const deleteQuotation = async (req, res) => {
   }
 };
 
+const exportQuotationExcel = async (req, res) => {
+  try {
+    const result = await salesQuotationService.exportQuotationXlsx(req.params.id);
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename=${result.filename}`);
+    res.send(result.buffer);
+  } catch (err) {
+    res.status(404).json({ error: err.message });
+  }
+};
+
 module.exports = {
   getQuotations,
   getQuotationDetail,
   createQuotation,
   updateQuotation,
   convertQuotation,
-  deleteQuotation
+  deleteQuotation,
+  exportQuotationExcel
 };

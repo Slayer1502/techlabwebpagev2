@@ -17,7 +17,8 @@ import {
   Printer,
   Pencil,
   Truck,
-  Loader2
+  Loader2,
+  FileSpreadsheet
 } from 'lucide-react';
 import { formatCurrencyValue, formatDateValue } from '../utils/helpers';
 import { Quotation } from '../types';
@@ -357,6 +358,13 @@ const QuotationPage = () => {
                                         title="WhatsApp Share"
                                       >
                                          <MessageSquare className="h-4 w-4" />
+                                      </button>
+                                      <button
+                                        onClick={() => window.open(`/api/sales/quotations/${q.id}/excel`, '_blank')}
+                                        className="p-2 text-emerald-600 bg-emerald-50 rounded-xl hover:bg-emerald-600 hover:text-white transition-all shadow-sm"
+                                        title="Download Excel (.xlsx)"
+                                      >
+                                         <FileSpreadsheet className="h-4 w-4" />
                                       </button>
                                       <button
                                         onClick={() => printQuotation(q)}
