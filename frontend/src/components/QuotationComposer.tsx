@@ -15,14 +15,15 @@ import {
   User,
   Calendar,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  Copy
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../utils/api';
 import { enquiryService } from '../services/enquiryService';
 import { quotationService } from '../services/quotationService';
 import { productService } from '../services/productService';
-import { formatCurrencyValue } from '../utils/helpers';
+import { formatCurrencyValue, formatDateValue } from '../utils/helpers';
 import { Enquiry, Product } from '../types';
 import { toast } from '../utils/toast';
 import MarginEngineBar from './MarginEngineBar';
@@ -101,6 +102,27 @@ const QuotationComposer = ({ context, initialValidUntil = '', onClose, onSuccess
   const [search, setSearch] = useState('');
   const [activeOptionTab, setActiveOptionTab] = useState<'All' | 'Option 1' | 'Option 2' | 'Option 3'>('All');
   const [notes, setNotes] = useState('');
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importSearch, setImportSearch] = useState('');
+
+  const { data: pastQuotationsData } = useQuery({
+    queryKey: ['past-quotations-import'],
+    queryFn: () => quotationService.getQuotations(),
+    enabled: isImportModalOpen,
+  });
+
+  const pastQuotes = pastQuotationsData || [];
+  const filteredPastQuotes = pastQuotes.filter((q: any) =>
+    q.customer_name.toLowerCase().includes(importSearch.toLowerCase()) ||
+    q.quote_number.toLowerCase().includes(importSearch.toLowerCase())
+  );
+
+  const importPreviousQuote = (pastQuote: any) => {
+    const pastItems = (pastQuote.items || []).map(normalizeLine);
+    setLines(prev => [...prev, ...pastItems]);
+    setIsImportModalOpen(false);
+    toast(`Imported ${pastItems.length} items from ${pastQuote.quote_number}`, 'success');
+  };
   const [validUntil, setValidUntil] = useState(initialValidUntil || '');
   const [saving, setSaving] = useState(false);
   const [customerName, setCustomerName] = useState(isManualContext(context) ? context.customerName || '' : (isEnquiryContext(context) ? context.enquiry.customer_name : context.customerName) || '');
@@ -423,10 +445,18 @@ const QuotationComposer = ({ context, initialValidUntil = '', onClose, onSuccess
 
             <div className="flex flex-wrap items-center gap-2">
               <button
+                type="button"
                 onClick={addGenericLine}
                 className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-blue bg-blue/5 border border-blue/15 rounded-lg hover:bg-blue hover:text-white transition-all"
               >
                 <Plus className="h-3.5 w-3.5" /> Add item / service line
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsImportModalOpen(true)}
+                className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-purple-600 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-600 hover:text-white transition-all"
+              >
+                <Copy className="h-3.5 w-3.5" /> Import From Past Quote
               </button>
               <div className="flex flex-wrap gap-1.5 items-center">
                 {quickCharges.map(qc => (
@@ -767,6 +797,48 @@ const QuotationComposer = ({ context, initialValidUntil = '', onClose, onSuccess
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {isImportModalOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-navy/50 backdrop-blur-sm">
+           <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl p-6 space-y-4 max-h-[85vh] flex flex-col">
+              <div className="flex justify-between items-center pb-3 border-b">
+                 <h3 className="text-lg font-bold text-navy flex items-center gap-2"><Copy className="h-5 w-5 text-purple-600" /> Import Items From Past Quote</h3>
+                 <button onClick={() => setIsImportModalOpen(false)} className="p-2 hover:bg-gray-200 rounded-full transition-colors"><X className="h-4 w-4" /></button>
+              </div>
+
+              <div className="relative">
+                 <Search className="absolute left-3 top-3 h-4 w-4 text-text-soft" />
+                 <input
+                   placeholder="Search by customer name or quote #..."
+                   className="w-full pl-10 pr-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm outline-none focus:border-blue/40"
+                   value={importSearch}
+                   onChange={e => setImportSearch(e.target.value)}
+                 />
+              </div>
+
+              <div className="overflow-y-auto flex-1 space-y-2 pr-1">
+                 {filteredPastQuotes.map((q: any) => (
+                    <div key={q.id} className="p-4 bg-gray-50 border border-gray-100 rounded-2xl flex justify-between items-center hover:border-blue/30 transition-all">
+                       <div>
+                          <p className="text-sm font-bold text-navy uppercase">{q.quote_number} • {q.customer_name}</p>
+                          <p className="text-xs text-text-soft">{formatCurrencyValue(q.total_amount)} • {formatDateValue(q.quote_date)} ({q.items?.length || 0} items)</p>
+                       </div>
+                       <button
+                         type="button"
+                         onClick={() => importPreviousQuote(q)}
+                         className="px-4 py-2 bg-blue text-white text-xs font-bold rounded-xl hover:bg-blue-600 transition-all"
+                       >
+                          Import Items
+                       </button>
+                    </div>
+                 ))}
+                 {filteredPastQuotes.length === 0 && (
+                    <p className="text-center py-8 text-xs text-text-soft uppercase tracking-widest font-bold">No past quotations found</p>
+                 )}
+              </div>
+           </div>
         </div>
       )}
     </div>
