@@ -4,6 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { quotationService } from '../services/quotationService';
 import { challanService } from '../services/challanService';
+import api from '../utils/api';
 
 import {
   FileText,
@@ -18,7 +19,8 @@ import {
   Pencil,
   Truck,
   Loader2,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Copy
 } from 'lucide-react';
 import { formatCurrencyValue, formatDateValue } from '../utils/helpers';
 import { Quotation } from '../types';
@@ -79,6 +81,17 @@ const QuotationPage = () => {
       toast('Quotation deleted', 'success');
       queryClient.invalidateQueries({ queryKey: ['quotations'] });
     },
+  });
+
+  const duplicateMutation = useMutation({
+    mutationFn: (id: string) => api.post(`/sales/quotations/${id}/duplicate`),
+    onSuccess: () => {
+      toast('Quotation duplicated successfully!', 'success');
+      queryClient.invalidateQueries({ queryKey: ['quotations'] });
+    },
+    onError: (err: any) => {
+      toast(err.response?.data?.error || 'Failed to duplicate quotation', 'error');
+    }
   });
 
   const convertMutation = useMutation({
@@ -374,6 +387,13 @@ const QuotationPage = () => {
                                         title="Print / PDF"
                                       >
                                          <Printer className="h-4 w-4" />
+                                      </button>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); duplicateMutation.mutate(q.id); }}
+                                        className="p-2 text-purple-600 bg-purple-50 rounded-xl hover:bg-purple-600 hover:text-white transition-all shadow-sm"
+                                        title="Duplicate / Copy Quotation"
+                                      >
+                                         <Copy className="h-4 w-4" />
                                       </button>
                                       <button
                                         onClick={() => { if(window.confirm('Delete this quotation?')) deleteMutation.mutate(q.id); }}

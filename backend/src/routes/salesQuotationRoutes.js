@@ -10,5 +10,6 @@ router.post("/sales/quotations", authRequired(["sales", "admin"]), salesQuotatio
 router.patch("/sales/quotations/:id", authRequired(["sales", "admin"]), salesQuotationController.updateQuotation);
 router.post("/sales/quotations/:id/convert", authRequired(["sales", "admin"]), salesQuotationController.convertQuotation);
 router.delete("/sales/quotations/:id", authRequired(["sales", "admin"]), salesQuotationController.deleteQuotation);
+router.post("/sales/quotations/:id/duplicate", authRequired(["sales", "admin"]), salesQuotationController.duplicateQuotation);
 
 module.exports = router;

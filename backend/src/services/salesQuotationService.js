@@ -371,6 +371,60 @@ const exportQuotationXlsx = async (id, optionTier = null) => {
   return { buffer: Buffer.from(buffer), filename: `${quotation.quote_number || id}.xlsx` };
 };
 
+const duplicateQuotation = (id, actorName) => {
+  const source = getQuotationById(id);
+  if (!source) throw new Error("Source quotation not found");
+  const { quotation, items } = source;
+
+  const newId = makeId("squot");
+  const quoteNumber = getQuoteSeq();
+  const today = nowIso().slice(0, 10);
+
+  const transaction = db.transaction(() => {
+    db.prepare(`
+      INSERT INTO sales_quotations (id, quote_number, customer_name, customer_mobile, customer_address, quote_date, valid_until, total_amount, status, notes, created_by, created_at, service_request_id, enquiry_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, NULL, NULL)
+    `).run(
+      newId,
+      quoteNumber,
+      quotation.customer_name,
+      quotation.customer_mobile,
+      quotation.customer_address,
+      today,
+      quotation.valid_until,
+      quotation.total_amount,
+      quotation.notes,
+      actorName,
+      nowIso()
+    );
+
+    const insertItem = db.prepare(`
+      INSERT INTO sales_quotation_items (id, quote_id, product_id, product_name, quantity, unit_price, unit_cost, source, supplier_id, sq_id, sq_number, option_tier)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    for (const it of items) {
+      insertItem.run(
+        makeId("sqi"),
+        newId,
+        it.product_id,
+        it.product_name,
+        it.quantity,
+        it.unit_price,
+        it.unit_cost,
+        it.source,
+        it.supplier_id,
+        null,
+        null,
+        it.option_tier || 'Option 1'
+      );
+    }
+  });
+
+  transaction();
+  return { id: newId, quoteNumber };
+};
+
 module.exports = {
   getQuotations,
   getQuotationById,
@@ -381,5 +435,6 @@ module.exports = {
   convertQuotation,
   deleteQuotation,
   upsertQuotationFromEnquiry,
-  exportQuotationXlsx
+  exportQuotationXlsx,
+  duplicateQuotation
 };

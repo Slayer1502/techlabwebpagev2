@@ -64,6 +64,16 @@ const exportQuotationExcel = async (req, res) => {
   }
 };
 
+const duplicateQuotation = async (req, res) => {
+  try {
+    const actor = userService.getUserById(req.user.id);
+    const result = salesQuotationService.duplicateQuotation(req.params.id, actor ? actor.name : null);
+    res.status(201).json({ message: "Quotation duplicated successfully", ...result });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+};
+
 module.exports = {
   getQuotations,
   getQuotationDetail,
@@ -71,5 +81,6 @@ module.exports = {
   updateQuotation,
   convertQuotation,
   deleteQuotation,
-  exportQuotationExcel
+  exportQuotationExcel,
+  duplicateQuotation
 };
