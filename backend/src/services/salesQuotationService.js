@@ -29,11 +29,11 @@ const getQuotationById = (id) => {
 };
 
 const getByServiceRequest = (serviceRequestId) => {
-  return db.prepare("SELECT * FROM sales_quotations WHERE service_request_id = ? ORDER BY created_at DESC LIMIT 1").get(serviceRequestId) || null;
+  return db.prepare("SELECT * FROM sales_quotations WHERE service_request_id = ? AND status != 'cancelled' ORDER BY CASE WHEN status = 'pending' THEN 0 ELSE 1 END, created_at DESC LIMIT 1").get(serviceRequestId) || null;
 };
 
 const getByEnquiryId = (enquiryId) => {
-  return db.prepare("SELECT * FROM sales_quotations WHERE enquiry_id = ? ORDER BY created_at DESC LIMIT 1").get(enquiryId) || null;
+  return db.prepare("SELECT * FROM sales_quotations WHERE enquiry_id = ? AND status != 'cancelled' ORDER BY CASE WHEN status = 'pending' THEN 0 ELSE 1 END, created_at DESC LIMIT 1").get(enquiryId) || null;
 };
 
 const productExistsStmt = db.prepare("SELECT 1 FROM products WHERE id = ?");
