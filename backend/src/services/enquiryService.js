@@ -1,4 +1,4 @@
-const { db, makeId, nowIso } = require("../../db");
+const { db, makeId, nowIso, getQuoteSeq } = require("../../db");
 const { syncCustomerToParties } = require("./customerService");
 const { applyOrderPayment } = require("./splitPaymentService");
 
@@ -107,7 +107,8 @@ const normalizeQuoteLine = (o) => ({
   sqId: o.sqId || null,
   sqNumber: o.sqNumber || null,
   poId: o.poId || null,
-  costSource: o.costSource === 'sq' ? 'sq' : 'manual'
+  costSource: o.costSource === 'sq' ? 'sq' : 'manual',
+  optionTier: String(o.optionTier || o.option_tier || 'Option 1').trim() || 'Option 1'
 });
 
 const quoteEnquiry = (id, data, updatedBy) => {
@@ -121,21 +122,63 @@ const quoteEnquiry = (id, data, updatedBy) => {
   const selProductId = firstOption ? firstOption.productId : data.productId;
   const selSqIds = options.filter(o => o.sqId).map(o => o.sqId);
 
-  db.prepare(`
-    UPDATE enquiries SET status = 'quoted', supplier_id = ?, cost_price = ?, quoted_price = ?, quantity = ?, product_id = ?, quote_options = ?, valid_until = COALESCE(?, valid_until), supplier_quote_id = ?, notes = COALESCE(?, notes), updated_by = ? WHERE id = ?
-  `).run(
-    selSupplierId || null,
-    selCostPrice,
-    selQuotedPrice,
-    selQuantity,
-    selProductId || null,
-    options.length ? JSON.stringify(options) : null,
-    data.validUntil || null,
-    selSqIds.length ? JSON.stringify(selSqIds) : null,
-    data.notes || null,
-    updatedBy,
-    id
-  );
+  const transaction = db.transaction(() => {
+    db.prepare(`
+      UPDATE enquiries SET status = 'quoted', supplier_id = ?, cost_price = ?, quoted_price = ?, quantity = ?, product_id = ?, quote_options = ?, valid_until = COALESCE(?, valid_until), supplier_quote_id = ?, notes = COALESCE(?, notes), updated_by = ? WHERE id = ?
+    `).run(
+      selSupplierId || null,
+      selCostPrice,
+      selQuotedPrice,
+      selQuantity,
+      selProductId || null,
+      options.length ? JSON.stringify(options) : null,
+      data.validUntil || null,
+      selSqIds.length ? JSON.stringify(selSqIds) : null,
+      data.notes || null,
+      updatedBy,
+      id
+    );
+
+    const existingSq = db.prepare("SELECT id FROM sales_quotations WHERE enquiry_id = ?").get(id);
+    const optionLabelsVal = data.optionLabels ? JSON.stringify(data.optionLabels) : null;
+    const enquiry = db.prepare("SELECT * FROM enquiries WHERE id = ?").get(id);
+
+    if (existingSq) {
+      db.prepare(`UPDATE sales_quotations SET total_amount = ?, valid_until = ?, notes = ?, option_labels = ? WHERE id = ?`)
+        .run(selQuotedPrice, data.validUntil || enquiry.valid_until, data.notes || enquiry.notes, optionLabelsVal, existingSq.id);
+      db.prepare("DELETE FROM sales_quotation_items WHERE quote_id = ?").run(existingSq.id);
+      const insertItem = db.prepare(`INSERT INTO sales_quotation_items (id, quote_id, product_id, product_name, quantity, unit_price, unit_cost, source, supplier_id, sq_id, sq_number, option_tier) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+      options.forEach(o => {
+        insertItem.run(makeId("sqi"), existingSq.id, o.productId, o.name, o.quantity, o.quotedPrice, o.costPrice, o.source, o.supplierId, o.sqId, o.sqNumber, o.optionTier || 'Option 1');
+      });
+    } else if (enquiry) {
+      const newSqId = makeId("squot");
+      const quoteNumber = getQuoteSeq();
+      db.prepare(`
+        INSERT INTO sales_quotations (id, quote_number, customer_name, customer_mobile, customer_address, quote_date, valid_until, total_amount, status, notes, created_by, created_at, enquiry_id, option_labels)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
+      `).run(
+        newSqId,
+        quoteNumber,
+        enquiry.customer_name,
+        enquiry.customer_mobile,
+        enquiry.visit_address,
+        nowIso().slice(0, 10),
+        data.validUntil || enquiry.valid_until,
+        selQuotedPrice,
+        data.notes || enquiry.notes,
+        updatedBy,
+        nowIso(),
+        id,
+        optionLabelsVal
+      );
+      const insertItem = db.prepare(`INSERT INTO sales_quotation_items (id, quote_id, product_id, product_name, quantity, unit_price, unit_cost, source, supplier_id, sq_id, sq_number, option_tier) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+      options.forEach(o => {
+        insertItem.run(makeId("sqi"), newSqId, o.productId, o.name, o.quantity, o.quotedPrice, o.costPrice, o.source, o.supplierId, o.sqId, o.sqNumber, o.optionTier || 'Option 1');
+      });
+    }
+  });
+  transaction();
 };
 
 const confirmEnquiry = (id, advanceData, updatedBy) => {
