@@ -29,11 +29,35 @@ const getQuotationById = (id) => {
 };
 
 const getByServiceRequest = (serviceRequestId) => {
-  return db.prepare("SELECT * FROM sales_quotations WHERE service_request_id = ? AND status != 'cancelled' ORDER BY CASE WHEN status = 'pending' THEN 0 ELSE 1 END, created_at DESC LIMIT 1").get(serviceRequestId) || null;
+  let quote = db.prepare("SELECT * FROM sales_quotations WHERE service_request_id = ? AND status != 'cancelled' ORDER BY CASE WHEN status = 'pending' THEN 0 ELSE 1 END, created_at DESC LIMIT 1").get(serviceRequestId);
+  if (quote) return quote;
+
+  const sr = db.prepare("SELECT customer_name FROM service_requests WHERE id = ?").get(serviceRequestId);
+  if (sr && sr.customer_name) {
+    quote = db.prepare("SELECT * FROM sales_quotations WHERE LOWER(customer_name) = LOWER(?) AND status != 'cancelled' ORDER BY CASE WHEN status = 'pending' THEN 0 ELSE 1 END, created_at DESC LIMIT 1").get(sr.customer_name);
+    if (quote) {
+      db.prepare("UPDATE sales_quotations SET service_request_id = ? WHERE id = ?").run(serviceRequestId, quote.id);
+      return quote;
+    }
+  }
+
+  return null;
 };
 
 const getByEnquiryId = (enquiryId) => {
-  return db.prepare("SELECT * FROM sales_quotations WHERE enquiry_id = ? AND status != 'cancelled' ORDER BY CASE WHEN status = 'pending' THEN 0 ELSE 1 END, created_at DESC LIMIT 1").get(enquiryId) || null;
+  let quote = db.prepare("SELECT * FROM sales_quotations WHERE enquiry_id = ? AND status != 'cancelled' ORDER BY CASE WHEN status = 'pending' THEN 0 ELSE 1 END, created_at DESC LIMIT 1").get(enquiryId);
+  if (quote) return quote;
+
+  const enq = db.prepare("SELECT customer_name FROM enquiries WHERE id = ?").get(enquiryId);
+  if (enq && enq.customer_name) {
+    quote = db.prepare("SELECT * FROM sales_quotations WHERE LOWER(customer_name) = LOWER(?) AND status != 'cancelled' ORDER BY CASE WHEN status = 'pending' THEN 0 ELSE 1 END, created_at DESC LIMIT 1").get(enq.customer_name);
+    if (quote) {
+      db.prepare("UPDATE sales_quotations SET enquiry_id = ? WHERE id = ?").run(enquiryId, quote.id);
+      return quote;
+    }
+  }
+
+  return null;
 };
 
 const productExistsStmt = db.prepare("SELECT 1 FROM products WHERE id = ?");
