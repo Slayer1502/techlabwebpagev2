@@ -477,7 +477,12 @@ const QuotationPage = () => {
                 <p className="text-xs text-text-soft">Choose which tier option you want to export/print for {selectedQuoteForOption.quote_number}:</p>
 
                 <div className="space-y-2 pt-2">
-                   {['Option 1', 'Option 2', 'Option 3'].map(opt => (
+                   {['Option 1', 'Option 2', 'Option 3'].map(opt => {
+                      const optionLabels = (() => {
+                        try { const raw = (selectedQuoteForOption as any).option_labels; return raw ? JSON.parse(raw) : {}; } catch { return {}; }
+                      })();
+                      const label = optionLabels[opt] || opt;
+                      return (
                       <button
                         key={opt}
                         onClick={() => {
@@ -492,10 +497,11 @@ const QuotationPage = () => {
                         }}
                         className="w-full text-left px-4 py-3 bg-gray-50 hover:bg-blue/5 border-2 border-gray-100 hover:border-blue/30 rounded-2xl font-bold text-navy text-sm transition-all flex justify-between items-center"
                       >
-                         <span>{opt} Package</span>
+                         <span>{label}</span>
                          <ChevronRight className="h-4 w-4 text-blue" />
                       </button>
-                   ))}
+                      );
+                   })}
                    <button
                      onClick={() => {
                        if (optionModalType === 'pdf') {
