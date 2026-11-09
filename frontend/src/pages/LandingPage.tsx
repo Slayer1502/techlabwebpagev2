@@ -273,11 +273,22 @@ const LandingPage = () => {
                    </div>
 
                    <div className="space-y-3">
-                      <h4 className="text-xs font-black text-text-soft uppercase tracking-widest">AI-Generated System Schematic & Topology Blueprint</h4>
-                      <div className="rounded-2xl overflow-hidden border border-gray-200 aspect-[21/9] bg-navy relative">
-                         <img src={selectedSolution.blueprintImage} alt="Topology Blueprint" className="w-full h-full object-cover opacity-85 hover:opacity-100 transition-opacity" />
-                         <div className="absolute inset-0 bg-gradient-to-t from-navy/80 via-transparent to-transparent flex items-end p-4">
-                            <span className="text-[10px] font-black text-white uppercase tracking-wider bg-black/50 px-3 py-1 rounded-lg backdrop-blur-sm">Live Node Connection Flow</span>
+                      <h4 className="text-xs font-black text-text-soft uppercase tracking-widest">System Schematic & Topology Blueprint</h4>
+                      <div className="rounded-3xl p-6 bg-navy text-white relative overflow-hidden shadow-inner border border-blue/20">
+                         <div className="absolute -top-10 -right-10 w-40 h-40 bg-blue rounded-full blur-3xl opacity-30"></div>
+                         <div className="flex flex-col md:flex-row items-center justify-between gap-4 relative z-10">
+                            {selectedSolution.topology.map((step: any, idx: number) => (
+                               <React.Fragment key={idx}>
+                                  <div className="flex-1 bg-white/5 border border-white/10 p-4 rounded-2xl text-center space-y-1 w-full hover:bg-white/10 transition-all">
+                                     <span className="text-[9px] font-black uppercase text-blue tracking-widest block">Node {step.step || `0${idx+1}`}</span>
+                                     <p className="text-xs font-black text-white">{step.label}</p>
+                                     <p className="text-[10px] text-gray-400 leading-tight">{step.desc}</p>
+                                  </div>
+                                  {idx < selectedSolution.topology.length - 1 && (
+                                     <div className="text-blue font-black text-lg rotate-90 md:rotate-0 my-1 md:my-0">➔</div>
+                                  )}
+                               </React.Fragment>
+                            ))}
                          </div>
                       </div>
                    </div>
