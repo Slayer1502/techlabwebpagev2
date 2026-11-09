@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,
@@ -13,7 +13,8 @@ import {
   Mail,
   ChevronRight,
   Package,
-  Plus
+  Plus,
+  X
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../utils/api';
@@ -21,6 +22,43 @@ import { formatCurrencyValue } from '../utils/helpers';
 import { Product } from '../types';
 
 const LandingPage = () => {
+  const [selectedSolution, setSelectedSolution] = useState<any | null>(null);
+
+  const solutions = [
+    {
+      title: 'Educational Campuses',
+      desc: 'Multi-building coverage, long-distance fiber links, central NVR control rooms, and student safety monitoring.',
+      badge: 'Schools & Colleges',
+      stat: '72+ Cameras (Arasu College)',
+      image: 'https://images.unsplash.com/photo-1562774053-701939374585?auto=format&fit=crop&w=1000&q=80',
+      highlights: ['72+ HD IP Cameras across campus buildings', '3x 32-Channel Enterprise NVR central monitoring', '18 PoE Switches & 18 dedicated server racks', 'Structured Cat6 and Fiber optic backbone']
+    },
+    {
+      title: 'Textile Mills & Factories',
+      desc: 'Heavy-duty perimeter security, harsh-environment weatherproof cameras, and warehouse theft prevention.',
+      badge: 'Manufacturing',
+      stat: 'Perimeter Defense',
+      image: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=1000&q=80',
+      highlights: ['Weatherproof outdoor bullet cameras with IR night vision', 'Warehouse inventory & loading dock surveillance', 'Perimeter intrusion detection systems', 'Ruggedized industrial switches & fiber runs']
+    },
+    {
+      title: 'Commercial Offices',
+      desc: 'Visitor management, entry/exit access control, and internal floor surveillance for secure operations.',
+      badge: 'Corporate',
+      stat: 'HD Clarity',
+      image: 'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1000&q=80',
+      highlights: ['Reception & visitor entry surveillance', 'Executive floor & server room security', 'Biometric & access control integration', 'Discreet executive dome cameras']
+    },
+    {
+      title: 'Retail Showrooms',
+      desc: 'POS counter surveillance, crystal-clear dome cameras, and remote mobile viewing for store owners.',
+      badge: 'Retail',
+      stat: '24/7 Monitoring',
+      image: 'https://images.unsplash.com/photo-1441986300917-64674bd60f65?auto=format&fit=crop&w=1000&q=80',
+      highlights: ['POS cash counter audio & video monitoring', 'Wide-angle showroom coverage to prevent shrinkage', 'Instant mobile app remote viewing for owners', 'High-definition facial recognition clarity']
+    }
+  ];
+
   const { data: productsData } = useQuery({
     queryKey: ['public-products-highlight'],
     queryFn: async () => {
@@ -161,13 +199,12 @@ const LandingPage = () => {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-                 {[
-                   { title: 'Educational Campuses', desc: 'Multi-building coverage, long-distance fiber links, central NVR control rooms, and student safety monitoring.', badge: 'Schools & Colleges', stat: '72+ Cameras (Arasu College)' },
-                   { title: 'Textile Mills & Factories', desc: 'Heavy-duty perimeter security, harsh-environment weatherproof cameras, and warehouse theft prevention.', badge: 'Manufacturing', stat: 'Perimeter Defense' },
-                   { title: 'Commercial Offices', desc: 'Visitor management, entry/exit access control, and internal floor surveillance for secure operations.', badge: 'Corporate', stat: 'HD Clarity' },
-                   { title: 'Retail Showrooms', desc: 'POS counter surveillance, crystal-clear dome cameras, and remote mobile viewing for store owners.', badge: 'Retail', stat: '24/7 Monitoring' }
-                 ].map((sol, i) => (
-                    <div key={i} className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm hover:shadow-xl transition-all flex flex-col justify-between group">
+                 {solutions.map((sol, i) => (
+                    <div
+                      key={i}
+                      onClick={() => setSelectedSolution(sol)}
+                      className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm hover:shadow-xl hover:border-blue/35 transition-all flex flex-col justify-between group cursor-pointer"
+                    >
                        <div className="space-y-4">
                           <span className="px-3 py-1 bg-blue/10 text-blue text-[10px] font-black uppercase rounded-lg tracking-wider">{sol.badge}</span>
                           <h3 className="text-xl font-black text-navy leading-tight">{sol.title}</h3>
@@ -175,15 +212,67 @@ const LandingPage = () => {
                        </div>
                        <div className="mt-8 pt-6 border-t border-gray-100 flex items-center justify-between">
                           <span className="text-[10px] font-bold text-navy uppercase tracking-wider">{sol.stat}</span>
-                          <Link to="/services" className="p-2 bg-navy text-white rounded-xl group-hover:bg-blue transition-colors">
-                             <ArrowRight className="h-4 w-4" />
-                          </Link>
+                          <span className="p-2 bg-navy text-white rounded-xl group-hover:bg-blue transition-colors flex items-center gap-1 text-xs font-bold">
+                             View <ArrowRight className="h-3.5 w-3.5" />
+                          </span>
                        </div>
                     </div>
                  ))}
               </div>
            </div>
         </section>
+
+        {selectedSolution && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-navy/70 backdrop-blur-md animate-in fade-in duration-200">
+             <div className="bg-white w-full max-w-2xl rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                <div className="relative aspect-video w-full bg-navy overflow-hidden">
+                   <img src={selectedSolution.image} alt={selectedSolution.title} className="w-full h-full object-cover" />
+                   <div className="absolute inset-0 bg-gradient-to-t from-navy/90 via-navy/30 to-transparent flex items-end p-8">
+                      <div>
+                         <span className="px-3 py-1 bg-blue text-white text-[10px] font-black uppercase rounded-lg tracking-wider mb-2 inline-block">{selectedSolution.badge}</span>
+                         <h3 className="text-3xl font-black text-white">{selectedSolution.title}</h3>
+                      </div>
+                   </div>
+                   <button onClick={() => setSelectedSolution(null)} className="absolute top-6 right-6 p-2 bg-black/50 text-white rounded-full hover:bg-black transition-colors">
+                      <X className="h-5 w-5" />
+                   </button>
+                </div>
+
+                <div className="p-8 space-y-6 overflow-y-auto flex-1">
+                   <div>
+                      <h4 className="text-xs font-black text-text-soft uppercase tracking-widest mb-2">Solution Overview</h4>
+                      <p className="text-sm font-medium text-navy leading-relaxed">{selectedSolution.desc}</p>
+                   </div>
+
+                   <div className="space-y-3">
+                      <h4 className="text-xs font-black text-text-soft uppercase tracking-widest">Key Architecture & Highlights</h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                         {selectedSolution.highlights.map((h: string, idx: number) => (
+                            <div key={idx} className="p-4 bg-soft/50 rounded-2xl flex items-center gap-3">
+                               <div className="w-2 h-2 rounded-full bg-blue shrink-0"></div>
+                               <span className="text-xs font-bold text-navy">{h}</span>
+                            </div>
+                         ))}
+                      </div>
+                   </div>
+
+                   <div className="pt-4 flex items-center justify-between border-t">
+                      <div>
+                         <p className="text-[10px] font-bold text-text-soft uppercase">Benchmark Scale</p>
+                         <p className="text-sm font-black text-navy">{selectedSolution.stat}</p>
+                      </div>
+                      <Link
+                        to="/services"
+                        onClick={() => setSelectedSolution(null)}
+                        className="px-6 py-3 bg-blue text-white text-xs font-black uppercase tracking-widest rounded-2xl hover:bg-blue-600 transition-all shadow-lg shadow-blue/20 flex items-center gap-2"
+                      >
+                         Book Site Survey <ArrowRight className="h-4 w-4" />
+                      </Link>
+                   </div>
+                </div>
+             </div>
+          </div>
+        )}
 
         {/* Enterprise Scale Spotlight */}
         <section className="py-24 px-6 bg-white">
