@@ -87,7 +87,7 @@ const updateQuotation = (id, data) => {
   if (!quotation) throw new Error("Quotation not found");
   if (quotation.status !== "pending") throw new Error("Only pending quotations can be edited");
 
-  const { customerName, customerMobile, customerAddress, quoteDate, validUntil, notes, items, serviceRequestId, enquiryId } = data;
+  const { customerName, customerMobile, customerAddress, quoteDate, validUntil, notes, items, serviceRequestId, enquiryId, optionLabels } = data;
   const total = items.reduce((s, it) => s + (Number(it.quantity) * (Number(it.unitPrice ?? it.unit_price) || 0)), 0);
 
   const transaction = db.transaction(() => {
