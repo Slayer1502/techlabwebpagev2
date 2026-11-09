@@ -151,6 +151,38 @@ const LandingPage = () => {
            </div>
         </section>
 
+        {/* Enterprise Scale Spotlight */}
+        <section className="py-24 px-6 bg-white">
+           <div className="max-w-7xl mx-auto bg-navy rounded-[3rem] p-12 lg:p-20 text-white relative overflow-hidden shadow-2xl">
+              <div className="absolute top-0 right-0 w-96 h-96 bg-blue rounded-full blur-[120px] opacity-25 pointer-events-none"></div>
+              <div className="max-w-3xl space-y-8 relative z-10">
+                 <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-blue/20 text-blue rounded-full text-xs font-bold uppercase tracking-widest border border-blue/30">
+                    <Shield className="h-4 w-4 text-blue" /> Enterprise Surveillance Showcase
+                 </div>
+                 <h2 className="text-4xl lg:text-6xl font-black text-white tracking-tight leading-[1.1]">
+                    Powering Campus Security at Scale.
+                 </h2>
+                 <p className="text-gray-300 text-base lg:text-lg font-medium leading-relaxed">
+                    Recently deployed at <strong className="text-white">Arasu College</strong>: A robust end-to-end security architecture featuring <span className="text-blue font-bold">74 HD IP Cameras</span>, <span className="text-blue font-bold">3x 32-Channel Enterprise NVRs</span>, <span className="text-blue font-bold">18 PoE Switches</span>, and <span className="text-blue font-bold">18 Server Racks</span> with structured Cat6 cabling.
+                 </p>
+                 <div className="flex flex-wrap gap-6 pt-4">
+                    <div className="bg-white/5 border border-white/10 px-6 py-4 rounded-2xl">
+                       <p className="text-2xl font-black text-white">74+ Cameras</p>
+                       <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">Campus Wide</p>
+                    </div>
+                    <div className="bg-white/5 border border-white/10 px-6 py-4 rounded-2xl">
+                       <p className="text-2xl font-black text-white">96+ Channels</p>
+                       <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">Centralized NVRs</p>
+                    </div>
+                    <div className="bg-white/5 border border-white/10 px-6 py-4 rounded-2xl">
+                       <p className="text-2xl font-black text-white">18 Racks</p>
+                       <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">Structured Distribution</p>
+                    </div>
+                 </div>
+              </div>
+           </div>
+        </section>
+
         {/* Featured Products */}
         <section className="py-32 bg-gray-50/50 px-6">
            <div className="max-w-7xl mx-auto">
