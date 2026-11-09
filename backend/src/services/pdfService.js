@@ -731,7 +731,11 @@ const generateQuotationPdf = async (quotationId, optionTier = null) => {
   doc.text(`Ph: ${bizPhone} | Email: ${bizEmail}`, 48, 99);
   if (bizGstin) doc.fillColor(PDF_COLORS.TEXT).fontSize(9).font("Helvetica-Bold").text(`GSTIN: ${bizGstin}`, 48, 111);
 
-  const quoteTitle = "QUOTATION" + (optionTier ? ` (${optionTier.toUpperCase()})` : "");
+  let optionLabels = { 'Option 1': 'Option 1', 'Option 2': 'Option 2', 'Option 3': 'Option 3' };
+  try { if (quotation.option_labels) optionLabels = JSON.parse(quotation.option_labels); } catch {}
+
+  const tierDisplayLabel = optionTier ? (optionLabels[optionTier] || optionTier) : "";
+  const quoteTitle = "QUOTATION" + (tierDisplayLabel ? ` (${tierDisplayLabel.toUpperCase()})` : "");
   doc.fillColor(PDF_COLORS.BLUE).fontSize(16).font("Helvetica-Bold").text(quoteTitle, 48, 50, { align: "right" });
   doc.fillColor(PDF_COLORS.TEXT).fontSize(10).font("Helvetica").text(`Quotation No: ${quotation.quote_number}`, 48, 75, { align: "right" });
   doc.text(`Date: ${formatDateValue(quotation.quote_date)}`, 48, 87, { align: "right" });

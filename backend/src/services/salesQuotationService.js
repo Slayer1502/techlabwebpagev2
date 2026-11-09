@@ -307,7 +307,11 @@ const exportQuotationXlsx = async (id, optionTier = null) => {
 
   const filteredTotal = items.reduce((s, it) => s + (Number(it.unit_price) * Number(it.quantity)), 0);
   const displayTotal = optionTier ? filteredTotal : quotation.total_amount;
-  const quoteTitle = "SALES QUOTATION" + (optionTier ? ` (${optionTier.toUpperCase()})` : "");
+  let optionLabels = { 'Option 1': 'Option 1', 'Option 2': 'Option 2', 'Option 3': 'Option 3' };
+  try { if (quotation.option_labels) optionLabels = JSON.parse(quotation.option_labels); } catch {}
+
+  const tierDisplayLabel = optionTier ? (optionLabels[optionTier] || optionTier) : "";
+  const quoteTitle = "SALES QUOTATION" + (tierDisplayLabel ? ` (${tierDisplayLabel.toUpperCase()})` : "");
 
   const wb = new XLSX.Workbook();
   const ws = wb.addWorksheet("Quotation");
