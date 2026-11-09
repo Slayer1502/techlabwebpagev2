@@ -162,7 +162,7 @@ const LandingPage = () => {
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
                  {[
-                   { title: 'Educational Campuses', desc: 'Multi-building coverage, long-distance fiber links, central NVR control rooms, and student safety monitoring.', badge: 'Schools & Colleges', stat: '74+ Cameras (Arasu College)' },
+                   { title: 'Educational Campuses', desc: 'Multi-building coverage, long-distance fiber links, central NVR control rooms, and student safety monitoring.', badge: 'Schools & Colleges', stat: '72+ Cameras (Arasu College)' },
                    { title: 'Textile Mills & Factories', desc: 'Heavy-duty perimeter security, harsh-environment weatherproof cameras, and warehouse theft prevention.', badge: 'Manufacturing', stat: 'Perimeter Defense' },
                    { title: 'Commercial Offices', desc: 'Visitor management, entry/exit access control, and internal floor surveillance for secure operations.', badge: 'Corporate', stat: 'HD Clarity' },
                    { title: 'Retail Showrooms', desc: 'POS counter surveillance, crystal-clear dome cameras, and remote mobile viewing for store owners.', badge: 'Retail', stat: '24/7 Monitoring' }
@@ -197,11 +197,11 @@ const LandingPage = () => {
                     Powering Campus Security at Scale.
                  </h2>
                  <p className="text-gray-300 text-base lg:text-lg font-medium leading-relaxed">
-                    Recently deployed at <strong className="text-white">Arasu College</strong>: A robust end-to-end security architecture featuring <span className="text-blue font-bold">74 HD IP Cameras</span>, <span className="text-blue font-bold">3x 32-Channel Enterprise NVRs</span>, <span className="text-blue font-bold">18 PoE Switches</span>, and <span className="text-blue font-bold">18 Server Racks</span> with structured Cat6 cabling.
+                    Recently deployed at <strong className="text-white">Arasu College</strong>: A robust end-to-end security architecture featuring <span className="text-blue font-bold">72 HD IP Cameras</span>, <span className="text-blue font-bold">3x 32-Channel Enterprise NVRs</span>, <span className="text-blue font-bold">18 PoE Switches</span>, and <span className="text-blue font-bold">18 Server Racks</span> with structured Cat6 cabling.
                  </p>
                  <div className="flex flex-wrap gap-6 pt-4">
                     <div className="bg-white/5 border border-white/10 px-6 py-4 rounded-2xl">
-                       <p className="text-2xl font-black text-white">74+ Cameras</p>
+                       <p className="text-2xl font-black text-white">72+ Cameras</p>
                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">Campus Wide</p>
                     </div>
                     <div className="bg-white/5 border border-white/10 px-6 py-4 rounded-2xl">
