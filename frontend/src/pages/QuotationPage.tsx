@@ -137,8 +137,9 @@ const QuotationPage = () => {
     window.open(`https://wa.me/91${mobile}?text=${encodeURIComponent(msg)}`, "_blank");
   };
 
-  const printQuotation = (q: Quotation) => {
-    const win = window.open(`/api/sales/quotations/${q.id}/pdf`, "_blank");
+  const printQuotation = (q: Quotation, optionTier?: string) => {
+    const query = optionTier ? `?option=${encodeURIComponent(optionTier)}` : '';
+    const win = window.open(`/api/sales/quotations/${q.id}/pdf${query}`, "_blank");
     if (!win) return toast("Pop-up blocked. Please allow pop-ups for printing.", "error");
   };
 
@@ -249,31 +250,66 @@ const QuotationPage = () => {
                  <p className="text-xs text-text-soft">{viewingQuote.customer_mobile || ''} {viewingQuote.customer_address ? `• ${viewingQuote.customer_address}` : ''}</p>
               </div>
 
-              <div className="overflow-x-auto">
-                 <table className="w-full text-left">
-                    <thead className="bg-gray-50/50 border-b">
-                       <tr className="text-[10px] font-bold text-text-soft uppercase tracking-wider">
-                          <th className="px-6 py-4">Item</th>
-                          <th className="px-6 py-4 text-right">Qty</th>
-                          <th className="px-6 py-4 text-right">Unit Price</th>
-                          <th className="px-6 py-4 text-right">Amount</th>
-                       </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                       {(viewingQuote.items || []).map((it, i) => (
-                          <tr key={i} className="hover:bg-soft/20">
-                             <td className="px-6 py-4 text-sm font-semibold text-navy">{it.product_name}</td>
-                             <td className="px-6 py-4 text-sm text-right">{it.quantity}</td>
-                             <td className="px-6 py-4 text-sm text-right">{formatCurrencyValue(it.unit_price)}</td>
-                             <td className="px-6 py-4 text-sm font-bold text-right">{formatCurrencyValue(it.unit_price * it.quantity)}</td>
-                          </tr>
-                       ))}
-                       <tr>
-                          <td colSpan={3} className="px-6 py-4 text-sm font-bold text-navy text-right">Total</td>
-                          <td className="px-6 py-4 text-base font-extrabold text-navy text-right">{formatCurrencyValue(viewingQuote.total_amount)}</td>
-                       </tr>
-                    </tbody>
-                 </table>
+              <div className="space-y-6">
+                 {(() => {
+                    const optionLabels = (() => {
+                      try { const raw = (viewingQuote as any).option_labels; return raw ? JSON.parse(raw) : {}; } catch { return {}; }
+                    })();
+
+                    const tiersMap = new Map();
+                    (viewingQuote.items || []).forEach((it: any) => {
+                      const tier = it.option_tier || 'Option 1';
+                      if (!tiersMap.has(tier)) tiersMap.set(tier, []);
+                      tiersMap.get(tier).push(it);
+                    });
+
+                    return Array.from(tiersMap.entries()).map(([tier, items]: [string, any[]]) => {
+                       const tierLabel = optionLabels[tier] || tier;
+                       const tierTotal = items.reduce((s, it) => s + (it.unit_price * it.quantity), 0);
+                       return (
+                          <div key={tier} className="bg-gray-50 border border-gray-200 rounded-3xl p-6 space-y-4">
+                             <div className="flex justify-between items-center pb-3 border-b">
+                                <h3 className="text-base font-bold text-navy flex items-center gap-2">
+                                   <span className="w-3 h-3 rounded-full bg-blue"></span>
+                                   {tierLabel}
+                                </h3>
+                                <div className="flex items-center gap-3">
+                                   <span className="text-xs font-bold text-text-soft uppercase">Subtotal: <strong className="text-navy">{formatCurrencyValue(tierTotal)}</strong></span>
+                                   <button
+                                     onClick={() => printQuotation(viewingQuote, tier)}
+                                     className="px-3 py-1.5 bg-blue text-white text-xs font-bold rounded-xl hover:bg-blue-600 transition-all flex items-center gap-1.5 shadow-sm"
+                                   >
+                                      <Printer className="h-3.5 w-3.5" /> Print {tierLabel}
+                                   </button>
+                                </div>
+                             </div>
+
+                             <div className="overflow-x-auto">
+                                <table className="w-full text-left">
+                                   <thead className="bg-gray-100/70 border-b">
+                                      <tr className="text-[10px] font-bold text-text-soft uppercase tracking-wider">
+                                         <th className="px-4 py-3">Item</th>
+                                         <th className="px-4 py-3 text-right">Qty</th>
+                                         <th className="px-4 py-3 text-right">Unit Price</th>
+                                         <th className="px-4 py-3 text-right">Amount</th>
+                                      </tr>
+                                   </thead>
+                                   <tbody className="divide-y divide-gray-200/50">
+                                      {items.map((it: any, i: number) => (
+                                         <tr key={i} className="hover:bg-white/60">
+                                            <td className="px-4 py-3 text-sm font-semibold text-navy">{it.product_name}</td>
+                                            <td className="px-4 py-3 text-sm text-right">{it.quantity}</td>
+                                            <td className="px-4 py-3 text-sm text-right">{formatCurrencyValue(it.unit_price)}</td>
+                                            <td className="px-4 py-3 text-sm font-bold text-right">{formatCurrencyValue(it.unit_price * it.quantity)}</td>
+                                         </tr>
+                                      ))}
+                                   </tbody>
+                                </table>
+                             </div>
+                          </div>
+                       );
+                    });
+                 })()}
               </div>
            </div>
         ) : view === 'list' ? (
