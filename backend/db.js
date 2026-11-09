@@ -807,6 +807,9 @@ const initializeDatabase = () => {
   if (!sqColsNow.includes("current_version")) {
     db.exec("ALTER TABLE sales_quotations ADD COLUMN current_version INTEGER NOT NULL DEFAULT 1");
   }
+  if (!sqColsNow.includes("option_labels")) {
+    db.exec("ALTER TABLE sales_quotations ADD COLUMN option_labels TEXT");
+  }
 
   // Unified quotation engine: cost/source tracking on sales quotation items
   const sqiColsNow = db.prepare("PRAGMA table_info(sales_quotation_items)").all().map(c => c.name);

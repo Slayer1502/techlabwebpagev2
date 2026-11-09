@@ -68,9 +68,10 @@ const createQuotation = (data, actorName) => {
   const date = quoteDate || nowIso().slice(0, 10);
   const total = items.reduce((s, it) => s + (Number(it.quantity) * (Number(it.unitPrice ?? it.unit_price) || 0)), 0);
 
+  const optionLabelsVal = data.optionLabels ? JSON.stringify(data.optionLabels) : null;
   const transaction = db.transaction(() => {
-    db.prepare(`INSERT INTO sales_quotations (id, quote_number, customer_name, customer_mobile, customer_address, quote_date, valid_until, total_amount, status, notes, created_by, created_at, service_request_id, enquiry_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)`)
-      .run(id, quoteNumber, String(customerName).trim(), customerMobile || null, customerAddress || null, date, validUntil || null, total, notes || null, actorName, nowIso(), serviceRequestId || null, enquiryId || null);
+    db.prepare(`INSERT INTO sales_quotations (id, quote_number, customer_name, customer_mobile, customer_address, quote_date, valid_until, total_amount, status, notes, created_by, created_at, service_request_id, enquiry_id, option_labels) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)`)
+      .run(id, quoteNumber, String(customerName).trim(), customerMobile || null, customerAddress || null, date, validUntil || null, total, notes || null, actorName, nowIso(), serviceRequestId || null, enquiryId || null, optionLabelsVal);
     const insertItem = db.prepare(`INSERT INTO sales_quotation_items (id, quote_id, product_id, product_name, quantity, unit_price, unit_cost, source, supplier_id, sq_id, sq_number, option_tier) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     for (const it of items) {
       const n = normalizeItem(it);
@@ -91,8 +92,9 @@ const updateQuotation = (id, data) => {
 
   const transaction = db.transaction(() => {
     quotationVersionService.snapshotQuotation(id, null);
-    db.prepare(`UPDATE sales_quotations SET customer_name = ?, customer_mobile = ?, customer_address = ?, quote_date = ?, valid_until = ?, total_amount = ?, notes = ?, service_request_id = ?, enquiry_id = ? WHERE id = ?`)
-      .run(String(customerName).trim(), customerMobile || null, customerAddress || null, quoteDate || quotation.quote_date, validUntil || null, total, notes || null, serviceRequestId ?? quotation.service_request_id, enquiryId ?? quotation.enquiry_id, id);
+    const optionLabelsVal = data.optionLabels ? JSON.stringify(data.optionLabels) : quotation.option_labels;
+    db.prepare(`UPDATE sales_quotations SET customer_name = ?, customer_mobile = ?, customer_address = ?, quote_date = ?, valid_until = ?, total_amount = ?, notes = ?, service_request_id = ?, enquiry_id = ?, option_labels = ? WHERE id = ?`)
+      .run(String(customerName).trim(), customerMobile || null, customerAddress || null, quoteDate || quotation.quote_date, validUntil || null, total, notes || null, serviceRequestId ?? quotation.service_request_id, enquiryId ?? quotation.enquiry_id, optionLabelsVal, id);
     db.prepare("DELETE FROM sales_quotation_items WHERE quote_id = ?").run(id);
     const insertItem = db.prepare(`INSERT INTO sales_quotation_items (id, quote_id, product_id, product_name, quantity, unit_price, unit_cost, source, supplier_id, sq_id, sq_number, option_tier) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     for (const it of items) {

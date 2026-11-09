@@ -104,6 +104,13 @@ const QuotationComposer = ({ context, initialValidUntil = '', onClose, onSuccess
   const [notes, setNotes] = useState('');
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importSearch, setImportSearch] = useState('');
+  const [optionLabels, setOptionLabels] = useState<Record<string, string>>(() => {
+    try {
+      const raw = isEnquiryContext(context) ? (context.enquiry as any).option_labels : null;
+      if (raw) return typeof raw === 'string' ? JSON.parse(raw) : raw;
+    } catch {}
+    return { 'Option 1': 'Option 1', 'Option 2': 'Option 2', 'Option 3': 'Option 3' };
+  });
 
   const { data: pastQuotationsData } = useQuery({
     queryKey: ['past-quotations-import'],
@@ -319,7 +326,8 @@ const QuotationComposer = ({ context, initialValidUntil = '', onClose, onSuccess
           status: context.enquiry.status === 'new' ? 'quoted' : undefined,
           quoteOptions: toQuoteOptions(lines),
           notes: notes || undefined,
-          validUntil: validUntil || null
+          validUntil: validUntil || null,
+          optionLabels
         });
         toast('Quote sent — customer marked as quoted', 'success');
         onSuccess?.();
@@ -333,7 +341,8 @@ const QuotationComposer = ({ context, initialValidUntil = '', onClose, onSuccess
           quoteDate: new Date().toISOString().slice(0, 10),
           validUntil: validUntil || null,
           notes: notes || undefined,
-          items: toSaleItems(lines)
+          items: toSaleItems(lines),
+          optionLabels
         });
         toast('Quotation saved!', 'success');
         onSuccess?.(res);
@@ -345,7 +354,8 @@ const QuotationComposer = ({ context, initialValidUntil = '', onClose, onSuccess
           customerAddress,
           validUntil: validUntil || null,
           notes: notes || undefined,
-          items: toSaleItems(lines)
+          items: toSaleItems(lines),
+          optionLabels
         };
         if (context.editingId) {
           await quotationService.updateQuotation(context.editingId, { ...base, quoteDate: undefined });
@@ -393,19 +403,39 @@ const QuotationComposer = ({ context, initialValidUntil = '', onClose, onSuccess
           <div className="flex-1 min-w-0 flex flex-col gap-5">
             <MarginEngineBar items={lines.filter(l => activeOptionTab === 'All' || l.optionTier === activeOptionTab).map(l => ({ name: l.name, quantity: l.quantity, costPrice: l.costPrice, quotedPrice: l.quotedPrice }))} />
 
+            <div className="bg-gray-100 p-3 rounded-2xl space-y-2">
+               <p className="text-[10px] font-black uppercase text-text-soft tracking-wider">Customize Option / Package Names</p>
+               <div className="grid grid-cols-3 gap-2">
+                  {['Option 1', 'Option 2', 'Option 3'].map(opt => (
+                     <div key={opt} className="space-y-1">
+                        <span className="text-[9px] font-bold text-text-soft uppercase">{opt} Label</span>
+                        <input
+                          className="w-full px-3 py-1.5 bg-white border-2 border-gray-200 rounded-xl text-xs font-bold text-navy outline-none focus:border-blue/40"
+                          value={optionLabels[opt] || opt}
+                          onChange={e => setOptionLabels(prev => ({ ...prev, [opt]: e.target.value }))}
+                          placeholder={`Rename ${opt}`}
+                        />
+                     </div>
+                  ))}
+               </div>
+            </div>
+
             <div className="flex bg-gray-100 p-1.5 rounded-2xl gap-1">
-              {['All', 'Option 1', 'Option 2', 'Option 3'].map(tab => (
+              {['All', 'Option 1', 'Option 2', 'Option 3'].map(tab => {
+                 const label = tab === 'All' ? 'All Items' : (optionLabels[tab] || tab);
+                 return (
                  <button
                    key={tab}
                    type="button"
                    onClick={() => setActiveOptionTab(tab as any)}
-                   className={`flex-1 py-2 text-xs font-black rounded-xl transition-all ${
+                   className={`flex-1 py-2 text-xs font-black rounded-xl transition-all truncate px-1 ${
                      activeOptionTab === tab ? 'bg-navy text-white shadow-md' : 'text-text-soft hover:bg-gray-200'
                    }`}
                  >
-                    {tab} {tab !== 'All' ? `(${lines.filter(l => l.optionTier === tab).length})` : `(${lines.length})`}
+                    {label} {tab !== 'All' ? `(${lines.filter(l => l.optionTier === tab).length})` : `(${lines.length})`}
                  </button>
-              ))}
+                 );
+              })}
             </div>
 
             <div className="relative">
@@ -540,9 +570,9 @@ const QuotationComposer = ({ context, initialValidUntil = '', onClose, onSuccess
                       value={l.optionTier || 'Option 1'}
                       onChange={e => setLine(idx, { optionTier: e.target.value })}
                     >
-                      <option value="Option 1">Option 1 (Standard)</option>
-                      <option value="Option 2">Option 2 (Alternative)</option>
-                      <option value="Option 3">Option 3 (Premium)</option>
+                      {['Option 1', 'Option 2', 'Option 3'].map(opt => (
+                        <option key={opt} value={opt}>{optionLabels[opt] || opt}</option>
+                      ))}
                     </select>
 
                     <div className="flex bg-white rounded-xl p-0.5 border-2 border-gray-200">
