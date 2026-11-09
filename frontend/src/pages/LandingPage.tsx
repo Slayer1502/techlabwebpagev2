@@ -31,7 +31,13 @@ const LandingPage = () => {
       badge: 'Schools & Colleges',
       stat: '72+ Cameras (Arasu College)',
       image: 'https://images.unsplash.com/photo-1562774053-701939374585?auto=format&fit=crop&w=1000&q=80',
-      highlights: ['72+ HD IP Cameras across campus buildings', '3x 32-Channel Enterprise NVR central monitoring', '18 PoE Switches & 18 dedicated server racks', 'Structured Cat6 and Fiber optic backbone']
+      highlights: ['72+ HD IP Cameras across campus buildings', '3x 32-Channel Enterprise NVR central monitoring', '18 PoE Switches & 18 dedicated server racks', 'Structured Cat6 and Fiber optic backbone'],
+      topology: [
+        { step: '01', label: 'Campus Blocks & Entry Gates', desc: '72+ HD IP Cameras deployed across all buildings' },
+        { step: '02', label: 'Nearby PoE Switches', desc: '18 distributed units handling power & local data' },
+        { step: '03', label: 'Fiber Optic Backbone', desc: 'High-speed zero-loss data routing across long distances' },
+        { step: '04', label: 'Central NVR Control Room', desc: '3x 32-Channel Enterprise NVRs recording 24/7' }
+      ]
     },
     {
       title: 'Textile Mills & Factories',
@@ -39,7 +45,13 @@ const LandingPage = () => {
       badge: 'Manufacturing',
       stat: 'Perimeter Defense',
       image: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=1000&q=80',
-      highlights: ['Weatherproof outdoor bullet cameras with IR night vision', 'Warehouse inventory & loading dock surveillance', 'Perimeter intrusion detection systems', 'Ruggedized industrial switches & fiber runs']
+      highlights: ['Weatherproof outdoor bullet cameras with IR night vision', 'Warehouse inventory & loading dock surveillance', 'Perimeter intrusion detection systems', 'Ruggedized industrial switches & fiber runs'],
+      topology: [
+        { step: '01', label: 'Perimeter & Loading Docks', desc: 'Weatherproof bullet cameras with IR night vision' },
+        { step: '02', label: 'Industrial PoE Switches', desc: 'Ruggedized switches handling harsh factory environments' },
+        { step: '03', label: 'Armored Cat6 Cabling', desc: 'Protected wiring running across production floors' },
+        { step: '04', label: 'Security Guard Station', desc: 'Continuous central monitoring and backup recording' }
+      ]
     },
     {
       title: 'Commercial Offices',
@@ -47,7 +59,13 @@ const LandingPage = () => {
       badge: 'Corporate',
       stat: 'HD Clarity',
       image: 'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1000&q=80',
-      highlights: ['Reception & visitor entry surveillance', 'Executive floor & server room security', 'Biometric & access control integration', 'Discreet executive dome cameras']
+      highlights: ['Reception & visitor entry surveillance', 'Executive floor & server room security', 'Biometric & access control integration', 'Discreet executive dome cameras'],
+      topology: [
+        { step: '01', label: 'Reception & Entry', desc: 'High-definition dome cameras recording all visitors' },
+        { step: '02', label: 'Floor Distribution Switches', desc: 'Compact Gigabit PoE switches per floor' },
+        { step: '03', label: 'Server Room Rack', desc: 'Secure rack housing core network and NVR' },
+        { step: '04', label: 'Management Access', desc: 'Desktop & mobile app live streaming for administrators' }
+      ]
     },
     {
       title: 'Retail Showrooms',
@@ -55,7 +73,13 @@ const LandingPage = () => {
       badge: 'Retail',
       stat: '24/7 Monitoring',
       image: 'https://images.unsplash.com/photo-1441986300917-64674bd60f65?auto=format&fit=crop&w=1000&q=80',
-      highlights: ['POS cash counter audio & video monitoring', 'Wide-angle showroom coverage to prevent shrinkage', 'Instant mobile app remote viewing for owners', 'High-definition facial recognition clarity']
+      highlights: ['POS cash counter audio & video monitoring', 'Wide-angle showroom coverage to prevent shrinkage', 'Instant mobile app remote viewing for owners', 'High-definition facial recognition clarity'],
+      topology: [
+        { step: '01', label: 'POS Billing Counter', desc: 'High-resolution dome camera directly over cash register' },
+        { step: '02', label: 'Showroom Floor', desc: 'Wide-angle cameras preventing product shrinkage' },
+        { step: '03', label: 'Plug-and-Play Switch', desc: 'Compact PoE switch powering store camera units' },
+        { step: '04', label: 'Owner Mobile App', desc: 'Instant live stream and playback access via phone' }
+      ]
     }
   ];
 
@@ -245,12 +269,20 @@ const LandingPage = () => {
                    </div>
 
                    <div className="space-y-3">
-                      <h4 className="text-xs font-black text-text-soft uppercase tracking-widest">Key Architecture & Highlights</h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                         {selectedSolution.highlights.map((h: string, idx: number) => (
-                            <div key={idx} className="p-4 bg-soft/50 rounded-2xl flex items-center gap-3">
-                               <div className="w-2 h-2 rounded-full bg-blue shrink-0"></div>
-                               <span className="text-xs font-bold text-navy">{h}</span>
+                      <h4 className="text-xs font-black text-text-soft uppercase tracking-widest">Visual Deployment Flow (Topology Blueprint)</h4>
+                      <div className="space-y-2">
+                         {selectedSolution.topology.map((step: any, idx: number) => (
+                            <div key={idx} className="p-4 bg-soft/60 border border-gray-100 rounded-2xl flex items-center gap-4">
+                               <div className="w-8 h-8 rounded-xl bg-blue text-white font-black text-xs flex items-center justify-center shrink-0 shadow-md">
+                                  {step.step || `0${idx+1}`}
+                               </div>
+                               <div className="min-w-0 flex-1">
+                                  <p className="text-xs font-black text-navy uppercase tracking-tight">{step.label}</p>
+                                  <p className="text-[11px] text-text-soft font-medium">{step.desc}</p>
+                               </div>
+                               {idx < selectedSolution.topology.length - 1 && (
+                                  <div className="text-blue font-bold px-2">↓</div>
+                               )}
                             </div>
                          ))}
                       </div>
