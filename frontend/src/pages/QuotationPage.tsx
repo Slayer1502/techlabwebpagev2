@@ -460,8 +460,9 @@ const QuotationPage = () => {
                   customerName: editingQuote?.customer_name || '',
                   customerMobile: editingQuote?.customer_mobile || '',
                   customerAddress: editingQuote?.customer_address || '',
-                  initialLines: editingQuote?.items || []
-                }}
+                  initialLines: editingQuote?.items || [],
+                  optionLabels: (editingQuote as any)?.option_labels ? JSON.parse((editingQuote as any).option_labels) : undefined
+                } as any}
                 initialValidUntil={editingQuote?.valid_until || ''}
                 onClose={() => { setEditingQuote(null); setView('list'); }}
                 onSuccess={() => queryClient.invalidateQueries({ queryKey: ['quotations'] })}

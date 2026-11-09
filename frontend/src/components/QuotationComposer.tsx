@@ -62,6 +62,7 @@ export interface QuoteContextManual {
   customerMobile?: string;
   customerAddress?: string;
   initialLines?: any[];
+  optionLabels?: any;
 }
 
 export type QuoteContext = QuoteContextEnquiry | QuoteContextService | QuoteContextManual;
@@ -106,7 +107,9 @@ const QuotationComposer = ({ context, initialValidUntil = '', onClose, onSuccess
   const [importSearch, setImportSearch] = useState('');
   const [optionLabels, setOptionLabels] = useState<Record<string, string>>(() => {
     try {
-      const raw = isEnquiryContext(context) ? (context.enquiry as any).option_labels : null;
+      const raw = isEnquiryContext(context)
+        ? (context.enquiry as any).option_labels
+        : (isManualContext(context) ? context.optionLabels : null);
       if (raw) return typeof raw === 'string' ? JSON.parse(raw) : raw;
     } catch {}
     return { 'Option 1': 'Option 1', 'Option 2': 'Option 2', 'Option 3': 'Option 3' };
