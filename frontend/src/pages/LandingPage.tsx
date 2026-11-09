@@ -151,6 +151,40 @@ const LandingPage = () => {
            </div>
         </section>
 
+        {/* Industry Solutions */}
+        <section className="py-32 px-6 bg-soft/20 border-y">
+           <div className="max-w-7xl mx-auto">
+              <div className="text-center space-y-4 mb-20">
+                 <p className="text-xs font-black text-blue uppercase tracking-[0.3em]">Tailored Solutions</p>
+                 <h2 className="text-4xl lg:text-5xl font-black text-navy tracking-tight">CCTV Security Built For Your Industry</h2>
+                 <p className="text-text-soft font-medium max-w-2xl mx-auto">Whether securing a sprawling college campus or protecting a heavy-duty textile mill, we engineer purpose-built surveillance ecosystems.</p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+                 {[
+                   { title: 'Educational Campuses', desc: 'Multi-building coverage, long-distance fiber links, central NVR control rooms, and student safety monitoring.', badge: 'Schools & Colleges', stat: '74+ Cameras (Arasu College)' },
+                   { title: 'Textile Mills & Factories', desc: 'Heavy-duty perimeter security, harsh-environment weatherproof cameras, and warehouse theft prevention.', badge: 'Manufacturing', stat: 'Perimeter Defense' },
+                   { title: 'Commercial Offices', desc: 'Visitor management, entry/exit access control, and internal floor surveillance for secure operations.', badge: 'Corporate', stat: 'HD Clarity' },
+                   { title: 'Retail Showrooms', desc: 'POS counter surveillance, crystal-clear dome cameras, and remote mobile viewing for store owners.', badge: 'Retail', stat: '24/7 Monitoring' }
+                 ].map((sol, i) => (
+                    <div key={i} className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm hover:shadow-xl transition-all flex flex-col justify-between group">
+                       <div className="space-y-4">
+                          <span className="px-3 py-1 bg-blue/10 text-blue text-[10px] font-black uppercase rounded-lg tracking-wider">{sol.badge}</span>
+                          <h3 className="text-xl font-black text-navy leading-tight">{sol.title}</h3>
+                          <p className="text-xs text-text-soft font-medium leading-relaxed">{sol.desc}</p>
+                       </div>
+                       <div className="mt-8 pt-6 border-t border-gray-100 flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-navy uppercase tracking-wider">{sol.stat}</span>
+                          <Link to="/services" className="p-2 bg-navy text-white rounded-xl group-hover:bg-blue transition-colors">
+                             <ArrowRight className="h-4 w-4" />
+                          </Link>
+                       </div>
+                    </div>
+                 ))}
+              </div>
+           </div>
+        </section>
+
         {/* Enterprise Scale Spotlight */}
         <section className="py-24 px-6 bg-white">
            <div className="max-w-7xl mx-auto bg-navy rounded-[3rem] p-12 lg:p-20 text-white relative overflow-hidden shadow-2xl">
