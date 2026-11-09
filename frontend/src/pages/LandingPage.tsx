@@ -31,6 +31,7 @@ const LandingPage = () => {
       badge: 'Schools & Colleges',
       stat: '72+ Cameras (Arasu College)',
       image: 'https://images.unsplash.com/photo-1562774053-701939374585?auto=format&fit=crop&w=1000&q=80',
+      blueprintImage: 'https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=1200&q=80',
       highlights: ['72+ HD IP Cameras across campus buildings', '3x 32-Channel Enterprise NVR central monitoring', '18 PoE Switches & 18 dedicated server racks', 'Structured Cat6 and Fiber optic backbone'],
       topology: [
         { step: '01', label: 'Campus Blocks & Entry Gates', desc: '72+ HD IP Cameras deployed across all buildings' },
@@ -45,6 +46,7 @@ const LandingPage = () => {
       badge: 'Manufacturing',
       stat: 'Perimeter Defense',
       image: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=1000&q=80',
+      blueprintImage: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=1200&q=80',
       highlights: ['Weatherproof outdoor bullet cameras with IR night vision', 'Warehouse inventory & loading dock surveillance', 'Perimeter intrusion detection systems', 'Ruggedized industrial switches & fiber runs'],
       topology: [
         { step: '01', label: 'Perimeter & Loading Docks', desc: 'Weatherproof bullet cameras with IR night vision' },
@@ -59,6 +61,7 @@ const LandingPage = () => {
       badge: 'Corporate',
       stat: 'HD Clarity',
       image: 'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1000&q=80',
+      blueprintImage: 'https://images.unsplash.com/photo-1544197150-b99a580bb7a8?auto=format&fit=crop&w=1200&q=80',
       highlights: ['Reception & visitor entry surveillance', 'Executive floor & server room security', 'Biometric & access control integration', 'Discreet executive dome cameras'],
       topology: [
         { step: '01', label: 'Reception & Entry', desc: 'High-definition dome cameras recording all visitors' },
@@ -73,6 +76,7 @@ const LandingPage = () => {
       badge: 'Retail',
       stat: '24/7 Monitoring',
       image: 'https://images.unsplash.com/photo-1441986300917-64674bd60f65?auto=format&fit=crop&w=1000&q=80',
+      blueprintImage: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=1200&q=80',
       highlights: ['POS cash counter audio & video monitoring', 'Wide-angle showroom coverage to prevent shrinkage', 'Instant mobile app remote viewing for owners', 'High-definition facial recognition clarity'],
       topology: [
         { step: '01', label: 'POS Billing Counter', desc: 'High-resolution dome camera directly over cash register' },
@@ -266,6 +270,16 @@ const LandingPage = () => {
                    <div>
                       <h4 className="text-xs font-black text-text-soft uppercase tracking-widest mb-2">Solution Overview</h4>
                       <p className="text-sm font-medium text-navy leading-relaxed">{selectedSolution.desc}</p>
+                   </div>
+
+                   <div className="space-y-3">
+                      <h4 className="text-xs font-black text-text-soft uppercase tracking-widest">AI-Generated System Schematic & Topology Blueprint</h4>
+                      <div className="rounded-2xl overflow-hidden border border-gray-200 aspect-[21/9] bg-navy relative">
+                         <img src={selectedSolution.blueprintImage} alt="Topology Blueprint" className="w-full h-full object-cover opacity-85 hover:opacity-100 transition-opacity" />
+                         <div className="absolute inset-0 bg-gradient-to-t from-navy/80 via-transparent to-transparent flex items-end p-4">
+                            <span className="text-[10px] font-black text-white uppercase tracking-wider bg-black/50 px-3 py-1 rounded-lg backdrop-blur-sm">Live Node Connection Flow</span>
+                         </div>
+                      </div>
                    </div>
 
                    <div className="space-y-3">
