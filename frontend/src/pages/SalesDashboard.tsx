@@ -26,7 +26,7 @@ import {
   PackageCheck,
   Truck
 } from 'lucide-react';
-import { formatCurrencyValue } from '../utils/helpers';
+import { formatCurrencyValue, formatDateValue } from '../utils/helpers';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -457,6 +457,34 @@ const SalesDashboard = () => {
                   <FileText className="h-4 w-4" />
                   Detailed P&L Report
                 </button>
+              </div>
+
+              {/* Day Schedule & Today's Agenda */}
+              <div className="bg-white rounded-[2.5rem] shadow-sm border p-6 space-y-4">
+                 <div className="flex items-center justify-between pb-3 border-b">
+                    <h2 className="text-lg font-bold text-navy flex items-center gap-2">
+                       <Calendar className="h-5 w-5 text-blue" />
+                       Day Schedule & Agenda
+                    </h2>
+                    <span className="text-[10px] font-black bg-blue/10 text-blue px-2.5 py-1 rounded-full uppercase tracking-wider">Active</span>
+                 </div>
+
+                 <div className="space-y-3 max-h-[280px] overflow-y-auto pr-1">
+                    {requests?.filter((r: any) => r.status === 'Scheduled' || r.status === 'Pending').map((r: any) => (
+                       <div key={r.id} onClick={() => navigate('/tickets')} className="p-3.5 bg-gray-50 hover:bg-blue/5 rounded-2xl border border-gray-100 cursor-pointer transition-all flex items-center justify-between">
+                          <div>
+                             <p className="text-xs font-bold text-navy">{r.customer_name}</p>
+                             <p className="text-[10px] text-text-soft font-semibold">{r.device_type} • <strong className="text-blue">{formatDateValue(r.scheduled_date || r.created_at)}</strong></p>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase ${r.status === 'Scheduled' ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'}`}>
+                             {r.status}
+                          </span>
+                       </div>
+                    ))}
+                    {(!requests || requests.filter((r: any) => r.status === 'Scheduled' || r.status === 'Pending').length === 0) && (
+                       <p className="text-center py-6 text-xs text-text-soft uppercase tracking-widest font-bold">No active schedule items</p>
+                    )}
+                 </div>
               </div>
 
               {/* Operational Stats */}
