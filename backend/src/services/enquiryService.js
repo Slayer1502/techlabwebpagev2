@@ -289,6 +289,7 @@ const deliverEnquiry = (id, paymentData, updatedBy) => {
     db.prepare("UPDATE enquiries SET status = 'delivered', final_received = ?, final_mode = ?, final_date = ?, updated_by = ? WHERE id = ?")
       .run(Number(received) || 0, mode || null, date || nowIso().slice(0, 10), updatedBy, id);
     db.prepare("UPDATE sales_quotations SET status = 'converted', converted_at = COALESCE(converted_at, ?) WHERE enquiry_id = ?").run(nowIso(), id);
+    db.prepare("UPDATE delivery_challans SET billing_status = 'billed' WHERE source_type = 'enquiry' AND source_id = ?").run(id);
   });
   transaction();
 };
