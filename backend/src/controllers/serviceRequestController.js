@@ -252,6 +252,15 @@ const generateBill = async (req, res) => {
   res.json({ message: "Bill generated", billNumber, billDate, billAmount, taxableAmount: billTaxable, cgst: billCgst, sgst: billSgst, gstTotal: billGstTotal });
 };
 
+const reopenBill = async (req, res) => {
+  try {
+    serviceRequestService.reopenBill(req.params.id);
+    res.json({ message: "Bill reopened successfully. You can now update used items and regenerate the bill." });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+};
+
 const recordPayment = async (req, res) => {
   const { amount, discount, paymentMode, paymentDate } = req.body;
   const request = serviceRequestService.getServiceRequestById(req.params.id);
@@ -400,6 +409,7 @@ module.exports = {
   createCustomerRequest,
   jobComplete,
   generateBill,
+  reopenBill,
   recordPayment,
   getPayments,
   updateJobProgress,

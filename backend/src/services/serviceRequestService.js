@@ -140,6 +140,18 @@ const generateBill = (id, data) => {
     `).run(data.billNumber, data.billDate, data.billAmount, data.billDetails, data.billTaxable, data.billCgst, data.billSgst, data.billGstTotal, id);
 };
 
+const reopenBill = (id) => {
+    const req = db.prepare("SELECT payment_status FROM service_requests WHERE id = ?").get(id);
+    if (!req) throw new Error("Service request not found");
+    if (req.payment_status === 'paid') throw new Error("Cannot reopen a bill that has already been paid");
+
+    db.prepare(`
+        UPDATE service_requests
+        SET bill_status = 'none', bill_number = NULL, bill_date = NULL, bill_amount = 0, bill_details = NULL, taxable_amount = 0, cgst_total = 0, sgst_total = 0, gst_total = 0
+        WHERE id = ?
+    `).run(id);
+};
+
 const recordPayment = (id, data) => {
     const transaction = db.transaction(() => {
         if (data.payAmount > 0) {
@@ -248,6 +260,7 @@ module.exports = {
   updateServiceRequestDraft,
   updateServiceRequestNotes,
   generateBill,
+  reopenBill,
   recordPayment,
   getPayments,
   cancelServiceRequest,

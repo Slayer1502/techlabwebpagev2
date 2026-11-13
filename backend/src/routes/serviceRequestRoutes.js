@@ -14,6 +14,7 @@ router.get("/sales/service-requests/:id/quotations", authRequired(["sales", "adm
 router.patch("/sales/service-requests/:id/assign", authRequired(["sales"]), serviceRequestController.assignTechnician);
 router.patch("/sales/service-requests/:id/notes", authRequired(["sales", "admin", "technician"]), serviceRequestController.updateStatusNotes);
 router.post("/sales/service-requests/:id/bill", authRequired(["sales", "admin"]), serviceRequestController.generateBill);
+router.post("/sales/service-requests/:id/reopen-bill", authRequired(["sales", "admin"]), serviceRequestController.reopenBill);
 router.patch("/sales/service-requests/:id/payment", authRequired(["sales", "admin"]), serviceRequestController.recordPayment);
 router.get("/sales/service-requests/:id/payments", authRequired(["sales", "admin"]), serviceRequestController.getPayments);
 router.patch("/sales/service-requests/:id/cancel", authRequired(["sales", "admin"]), serviceRequestController.cancelServiceRequest);

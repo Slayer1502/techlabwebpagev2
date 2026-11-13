@@ -947,12 +947,31 @@ const ServiceDetailDrawer = ({ request, onClose, onUpdate }: Props) => {
                  </button>
               )}
                {request.bill_status === 'billed' && request.payment_status !== 'paid' && (
-                  <button
-                   onClick={() => handleAction('payment')}
-                   className="col-span-2 px-6 py-3 bg-blue text-white rounded-2xl text-sm font-bold hover:bg-blue-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue/20"
-                  >
-                    <IndianRupee className="h-4 w-4" /> Record Payment
-                  </button>
+                  <div className="col-span-2 flex gap-3">
+                     <button
+                      onClick={() => handleAction('payment')}
+                      className="flex-1 px-6 py-3 bg-blue text-white rounded-2xl text-sm font-bold hover:bg-blue-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue/20"
+                     >
+                       <IndianRupee className="h-4 w-4" /> Record Payment
+                     </button>
+                     <button
+                      onClick={async () => {
+                        if (window.confirm('Re-open this bill to add/edit items?')) {
+                          try {
+                            await api.post(`/sales/service-requests/${request.id}/reopen-bill`);
+                            toast('Bill reopened! You can now edit items and regenerate.', 'success');
+                            onUpdate();
+                          } catch (e: any) {
+                            toast(e.response?.data?.error || 'Failed to reopen bill', 'error');
+                          }
+                        }
+                      }}
+                      className="px-5 py-3 bg-amber-500 text-white rounded-2xl text-sm font-bold hover:bg-amber-600 transition-all flex items-center gap-2 shadow-lg shadow-amber-500/20"
+                      title="Re-open bill to edit items"
+                     >
+                       <Pencil className="h-4 w-4" /> Re-open Bill
+                     </button>
+                  </div>
                )}
                {request.status === 'Completed' && (
                   <button
