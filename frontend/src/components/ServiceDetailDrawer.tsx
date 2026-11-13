@@ -1118,10 +1118,9 @@ const ServiceDetailDrawer = ({ request, onClose, onUpdate }: Props) => {
            mode="update"
            onConfirm={async (items, conveyance, notes) => {
               try {
-                 await api.post(`/technician/service-requests/${request.id}/complete`, {
+                 await serviceRequestService.updateJobProgress(request.id, {
                     used_items: items,
-                    conveyance_expense: conveyance,
-                    mode: 'update'
+                    conveyance_expense: conveyance
                  });
                  if (notes) await serviceRequestService.updateNotes(request.id, notes);
                  setIsUsedItemsModalOpen(false);

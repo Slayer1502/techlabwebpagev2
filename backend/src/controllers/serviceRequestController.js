@@ -194,8 +194,6 @@ const updateJobProgress = async (req, res) => {
   const request = serviceRequestService.getServiceRequestById(req.params.id);
   if (!request) return res.status(404).json({ error: "Service request not found" });
 
-  if (request.status === "Completed") return res.status(400).json({ error: "Cannot update a completed job" });
-
   const { used_items, conveyance_expense } = req.body;
 
   serviceRequestService.updateServiceRequestDraft(req.params.id, {
