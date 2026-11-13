@@ -48,6 +48,7 @@ import QuotationComposer from './QuotationComposer';
 import RequestSupplierQuoteModal from './RequestSupplierQuoteModal';
 import ChallanReturnModal from './ChallanReturnModal';
 import RecurringScheduleModal from './RecurringScheduleModal';
+import UsedItemsModal from './UsedItemsModal';
 
 interface Props {
   request: ServiceRequest;
@@ -58,6 +59,7 @@ interface Props {
 const ServiceDetailDrawer = ({ request, onClose, onUpdate }: Props) => {
   const navigate = useNavigate();
   const [modal, setModal] = useState<'assign' | 'bill' | 'payment' | 'quote' | null>(null);
+  const [isUsedItemsModalOpen, setIsUsedItemsModalOpen] = useState(false);
   const [notes, setNotes] = useState(request.status_notes || '');
   const [savingNotes, setSavingNotes] = useState(false);
   const [survey, setSurvey] = useState<any>(null);
@@ -519,12 +521,21 @@ const ServiceDetailDrawer = ({ request, onClose, onUpdate }: Props) => {
            </div>
 
 {/* Section: Site Survey */}
-           {(parts || used.length > 0 || resolvedDc?.items?.length) && (
+           {(parts || used.length > 0 || resolvedDc?.items?.length || canWrite) && (
               <div className="space-y-4">
                  <div className="flex justify-between items-center">
                     <p className="text-[10px] font-bold text-text-soft uppercase tracking-widest flex items-center gap-2">
                        <Package className="h-3.5 w-3.5" /> Parts & Consumables
                     </p>
+                    {canWrite && (
+                       <button
+                         type="button"
+                         onClick={() => setIsUsedItemsModalOpen(true)}
+                         className="text-[10px] font-bold text-blue hover:text-blue-700 transition-all flex items-center gap-1 uppercase tracking-widest bg-blue/5 px-2.5 py-1 rounded-lg border border-blue/15"
+                       >
+                          <Pencil className="h-3 w-3" /> Edit Used Items
+                       </button>
+                    )}
                     {canWrite && request.part_request_status === 'requested' && (
                        <button
                          onClick={async () => {
@@ -1096,6 +1107,31 @@ const ServiceDetailDrawer = ({ request, onClose, onUpdate }: Props) => {
             setDispatchOpen(false);
           }}
         />
+      )}
+
+      {isUsedItemsModalOpen && (
+         <UsedItemsModal
+           onClose={() => setIsUsedItemsModalOpen(false)}
+           initialItems={request.used_items}
+           initialConveyance={request.conveyance_expense}
+           initialNotes={request.status_notes}
+           mode="update"
+           onConfirm={async (items, conveyance, notes) => {
+              try {
+                 await api.post(`/technician/service-requests/${request.id}/complete`, {
+                    used_items: items,
+                    conveyance_expense: conveyance,
+                    mode: 'update'
+                 });
+                 if (notes) await serviceRequestService.updateNotes(request.id, notes);
+                 setIsUsedItemsModalOpen(false);
+                 onUpdate();
+                 toast('Used items updated successfully!', 'success');
+              } catch (e: any) {
+                 toast(e.response?.data?.error || 'Failed to update used items', 'error');
+              }
+           }}
+         />
       )}
 
       {returnOpen && linkedDc && (
