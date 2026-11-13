@@ -22,7 +22,7 @@ router.patch("/sales/service-requests/:id/cancel", authRequired(["sales", "admin
 // Technician
 router.patch("/technician/service-requests/:id/parts", authRequired(["technician", "admin"]), serviceRequestController.requestParts);
 router.patch("/technician/service-requests/:id/part-collected", authRequired(["technician", "admin"]), serviceRequestController.markPartsCollected);
-router.patch("/technician/service-requests/:id/job-progress", authRequired(["technician", "admin"]), serviceRequestController.updateJobProgress);
+router.patch("/technician/service-requests/:id/job-progress", authRequired(["sales", "admin", "technician"]), serviceRequestController.updateJobProgress);
 router.post("/technician/service-requests/:id/complete", authRequired(["sales", "admin", "technician"]), serviceRequestController.jobComplete);
 router.post("/technician/service-requests/:id/challan-return", authRequired(["technician", "admin"]), serviceRequestController.recordChallanReturn);
 
