@@ -112,19 +112,31 @@ const assignTechnician = (id, technicianId, technicianName) => {
 };
 
 const completeServiceRequest = (id, data) => {
+    let usedSum = 0;
+    try {
+        const parsed = JSON.parse(data.usedItems || '[]');
+        usedSum = parsed.reduce((s, i) => s + ((Number(i.price) || 0) * (Number(i.qty) || 1)), 0);
+    } catch {}
+
     db.prepare(`
         UPDATE service_requests
-        SET status = 'Completed', part_request_status = 'collected', completed_at = ?, used_items = ?, conveyance_expense = ?
+        SET status = 'Completed', part_request_status = 'collected', completed_at = ?, used_items = ?, conveyance_expense = ?, estimated_cost = CASE WHEN ? > 0 THEN ? ELSE estimated_cost END
         WHERE id = ?
-    `).run(data.completedAt, data.usedItems, data.conveyanceExpense, id);
+    `).run(data.completedAt, data.usedItems, data.conveyanceExpense, usedSum, usedSum, id);
 };
 
 const updateServiceRequestDraft = (id, data) => {
+    let usedSum = 0;
+    try {
+        const parsed = JSON.parse(data.usedItems || '[]');
+        usedSum = parsed.reduce((s, i) => s + ((Number(i.price) || 0) * (Number(i.qty) || 1)), 0);
+    } catch {}
+
     db.prepare(`
         UPDATE service_requests
-        SET used_items = ?, conveyance_expense = ?
+        SET used_items = ?, conveyance_expense = ?, estimated_cost = CASE WHEN ? > 0 THEN ? ELSE estimated_cost END
         WHERE id = ?
-    `).run(data.usedItems, data.conveyanceExpense, id);
+    `).run(data.usedItems, data.conveyanceExpense, usedSum, usedSum, id);
 };
 
 const updateServiceRequestNotes = (id, notes) => {
