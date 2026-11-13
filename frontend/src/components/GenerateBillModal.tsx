@@ -49,8 +49,17 @@ const GenerateBillModal = ({ request, onClose, onSuccess }: Props) => {
 
         const dcItemNames = new Set((dc?.items || []).map((i: any) => norm(i.item_name)));
 
+        const used = (() => { try { return JSON.parse(request.used_items || '[]'); } catch { return []; } })();
         let items: LineItem[] = [];
-        if (dc?.items?.length) {
+
+        if (used.length) {
+          items = used.map((i: any) => ({
+            desc: i.name,
+            qty: Number(i.qty) || 1,
+            rate: Number(i.price) || 0,
+            amount: (Number(i.qty) || 1) * (Number(i.price) || 0),
+          }));
+        } else if (dc?.items?.length) {
           items = dc.items.map((it: any) => ({
             desc: it.item_name,
             qty: it.qty,
@@ -74,9 +83,6 @@ const GenerateBillModal = ({ request, onClose, onSuccess }: Props) => {
             rate: Number(qi.unit_price) || 0,
             amount: (Number(qi.quantity) || 1) * (Number(qi.unit_price) || 0),
           }));
-        } else {
-          const used = (() => { try { return JSON.parse(request.used_items || '[]'); } catch { return []; } })();
-          items = used.map((i: any) => ({ desc: i.name, qty: i.qty, rate: i.price, amount: i.price * i.qty }));
         }
 
         // Always merge any remaining used_items (service charges, labor, extra parts)
