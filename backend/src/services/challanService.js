@@ -196,20 +196,11 @@ const getChallans = (filters) => {
 
   if (sourceType && sourceId) {
     const type = String(sourceType).toLowerCase();
-    const challans = db.prepare("SELECT * FROM delivery_challans WHERE source_type = ? AND source_id = ? AND (void_reason IS NULL OR void_reason = '') ORDER BY created_at, id").all(type, String(sourceId));
-    if (!challans.length) return null;
-
-    const latestChallan = challans[challans.length - 1];
-    const allItems = [];
-    let totalVal = 0;
-
-    for (const c of challans) {
-      const cItems = db.prepare("SELECT id, item_name, qty, unit_price, total_price FROM delivery_challan_items WHERE challan_id = ? ORDER BY id").all(c.id);
-      allItems.push(...cItems);
-      totalVal += (Number(c.total_value) || cItems.reduce((s, i) => s + (Number(i.total_price) || (Number(i.qty) * Number(i.unit_price)) || 0), 0));
-    }
-
-    return { ...latestChallan, total_value: totalVal, items: allItems };
+    const challan = db.prepare("SELECT * FROM delivery_challans WHERE source_type = ? AND source_id = ? AND billing_status = 'pending' AND (void_reason IS NULL OR void_reason = '') ORDER BY created_at DESC, id DESC LIMIT 1").get(type, String(sourceId))
+                 || db.prepare("SELECT * FROM delivery_challans WHERE source_type = ? AND source_id = ? AND (void_reason IS NULL OR void_reason = '') ORDER BY created_at DESC, id DESC LIMIT 1").get(type, String(sourceId));
+    if (!challan) return null;
+    const items = db.prepare("SELECT id, item_name, qty, unit_price, total_price FROM delivery_challan_items WHERE challan_id = ? ORDER BY id").all(challan.id);
+    return { ...challan, items };
   }
 
   let query = "SELECT * FROM delivery_challans WHERE 1=1";
