@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, FileText, Loader2, Save, IndianRupee, Calendar, Percent, CheckCircle2, Package } from 'lucide-react';
+import { X, FileText, Loader2, Save, IndianRupee, Calendar, Percent, CheckCircle2, Package, Trash2, Plus } from 'lucide-react';
 import { challanService } from '../services/challanService';
 import { serviceRequestService } from '../services/serviceRequestService';
 import api from '../utils/api';
@@ -120,6 +120,38 @@ const GenerateBillModal = ({ request, onClose, onSuccess }: Props) => {
       setFormData(prev => ({ ...prev, taxableAmount: Math.round(subTotal / 1.18), gstRate: 18 }));
     }
   }, [isGstEnabled, subTotal]);
+
+  const updateLineItem = (idx: number, patch: Partial<LineItem>) => {
+    setLineItems(items => {
+      const next = items.map((it, i) => {
+        if (i !== idx) return it;
+        const updated = { ...it, ...patch };
+        updated.amount = (Number(updated.qty) || 0) * (Number(updated.rate) || 0);
+        return updated;
+      });
+      const total = next.reduce((s, l) => s + l.amount, 0);
+      setSubTotal(total);
+      return next;
+    });
+  };
+
+  const addLineItem = () => {
+    setLineItems(items => {
+      const next = [...items, { desc: 'New Item', qty: 1, rate: 0, amount: 0 }];
+      const total = next.reduce((s, l) => s + l.amount, 0);
+      setSubTotal(total);
+      return next;
+    });
+  };
+
+  const removeLineItem = (idx: number) => {
+    setLineItems(items => {
+      const next = items.filter((_, i) => i !== idx);
+      const total = next.reduce((s, l) => s + l.amount, 0);
+      setSubTotal(total);
+      return next;
+    });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -249,29 +281,65 @@ const GenerateBillModal = ({ request, onClose, onSuccess }: Props) => {
               )}
            </div>
 
-           {!composing && lineItems.length > 0 && (
+           {!composing && (
               <div className="space-y-2 animate-in fade-in duration-200">
-                 <div className="flex items-center gap-2 mb-1">
-                    <Package className="h-3.5 w-3.5 text-text-soft" />
-                    <span className="text-[10px] font-black text-text-soft uppercase tracking-widest">Billed items</span>
+                 <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                       <Package className="h-3.5 w-3.5 text-text-soft" />
+                       <span className="text-[10px] font-black text-text-soft uppercase tracking-widest">Billed items (Editable)</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={addLineItem}
+                      className="px-2.5 py-1 bg-blue/10 text-blue rounded-lg text-[10px] font-black uppercase tracking-wider hover:bg-blue hover:text-white transition-all flex items-center gap-1"
+                    >
+                       <Plus className="h-3 w-3" /> Add Item
+                    </button>
                  </div>
                  <div className="border border-gray-100 rounded-2xl overflow-hidden">
                     <table className="w-full text-left">
                        <thead className="bg-gray-50 border-b border-gray-100">
                           <tr className="text-[9px] font-black text-text-soft uppercase tracking-widest">
-                             <th className="px-4 py-2">Item</th>
-                             <th className="px-3 py-2 text-right">Qty</th>
-                             <th className="px-3 py-2 text-right">Rate</th>
-                             <th className="px-4 py-2 text-right">Amount</th>
+                             <th className="px-3 py-2">Item</th>
+                             <th className="px-2 py-2 text-right">Qty</th>
+                             <th className="px-2 py-2 text-right">Rate</th>
+                             <th className="px-3 py-2 text-right">Amount</th>
+                             <th className="w-8"></th>
                           </tr>
                        </thead>
                        <tbody className="divide-y divide-gray-100">
                           {lineItems.map((it, idx) => (
-                             <tr key={idx} className="text-xs font-bold text-navy">
-                                <td className="px-4 py-2 truncate max-w-[200px]">{it.desc}</td>
-                                <td className="px-3 py-2 text-right">{it.qty}</td>
-                                <td className="px-3 py-2 text-right">₹{Number(it.rate).toLocaleString()}</td>
-                                <td className="px-4 py-2 text-right text-blue">{formatCurrencyValue(it.amount)}</td>
+                             <tr key={idx} className="text-xs">
+                                <td className="px-3 py-2">
+                                   <input
+                                     className="w-full bg-white border border-gray-200 rounded-lg px-2 py-1 font-bold text-navy text-xs outline-none focus:border-blue/40"
+                                     value={it.desc}
+                                     onChange={e => updateLineItem(idx, { desc: e.target.value })}
+                                   />
+                                </td>
+                                <td className="px-2 py-2 text-right w-16">
+                                   <input
+                                     type="number"
+                                     min="1"
+                                     className="w-full bg-white border border-gray-200 rounded-lg px-2 py-1 font-bold text-navy text-xs text-right outline-none focus:border-blue/40"
+                                     value={it.qty}
+                                     onChange={e => updateLineItem(idx, { qty: Number(e.target.value) })}
+                                   />
+                                </td>
+                                <td className="px-2 py-2 text-right w-24">
+                                   <input
+                                     type="number"
+                                     className="w-full bg-white border border-gray-200 rounded-lg px-2 py-1 font-bold text-navy text-xs text-right outline-none focus:border-blue/40"
+                                     value={it.rate}
+                                     onChange={e => updateLineItem(idx, { rate: Number(e.target.value) })}
+                                   />
+                                </td>
+                                <td className="px-3 py-2 text-right font-black text-blue">{formatCurrencyValue(it.amount)}</td>
+                                <td className="px-2 py-2 text-center">
+                                   <button type="button" onClick={() => removeLineItem(idx)} className="text-gray-300 hover:text-red-500">
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                   </button>
+                                </td>
                              </tr>
                           ))}
                        </tbody>
